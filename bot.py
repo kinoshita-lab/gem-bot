@@ -132,18 +132,26 @@ if not GEMINI_API_KEY:
     print("Error: GEMINI_API_KEY environment variable not set.")
     exit(1)
 
+if not GEMINI_CHANNEL_ID:
+    print("Error: GEMINI_CHANNEL_ID environment variable not set.")
+    print("Please specify at least one channel ID where the bot should respond.")
+    exit(1)
+
 # Parse GEMINI_CHANNEL_ID (can be comma-separated for multiple channels)
-gemini_channel_ids: set[int] = set()
-if GEMINI_CHANNEL_ID:
-    for channel_id_str in GEMINI_CHANNEL_ID.split(","):
-        channel_id_str = channel_id_str.strip()
-        if channel_id_str:
-            try:
-                gemini_channel_ids.add(int(channel_id_str))
-            except ValueError:
-                print(
-                    f"Warning: Invalid channel ID '{channel_id_str}' in GEMINI_CHANNEL_ID"
-                )
+enabled_channel_ids: set[int] = set()
+for channel_id_str in GEMINI_CHANNEL_ID.split(","):
+    channel_id_str = channel_id_str.strip()
+    if channel_id_str:
+        try:
+            enabled_channel_ids.add(int(channel_id_str))
+        except ValueError:
+            print(
+                f"Warning: Invalid channel ID '{channel_id_str}' in GEMINI_CHANNEL_ID"
+            )
+
+if not enabled_channel_ids:
+    print("Error: No valid channel IDs found in GEMINI_CHANNEL_ID.")
+    exit(1)
 
 
 class GeminiBot(commands.Bot):
@@ -276,10 +284,7 @@ bot.help_command = LocalizedHelpCommand()
 @bot.event
 async def on_ready():
     print(f"We have logged in as {bot.user}")
-    if gemini_channel_ids:
-        print(f"Gemini auto-response enabled for channels: {gemini_channel_ids}")
-    else:
-        print("Gemini auto-response disabled (GEMINI_CHANNEL_ID not set)")
+    print(f"Responding to messages in channels: {enabled_channel_ids}")
 
 
 @bot.event
@@ -328,8 +333,8 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # Check if the message is in a Gemini-enabled channel
-    if gemini_channel_ids and message.channel.id in gemini_channel_ids:
+    # Check if the message is in an enabled channel
+    if message.channel.id in enabled_channel_ids:
         # Auto-respond to all messages in Gemini-enabled channels
         async with message.channel.typing():
             try:

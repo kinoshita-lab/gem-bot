@@ -8,7 +8,7 @@ A Discord bot that enables AI conversations using the Gemini API.
 
 ## Features / 機能
 
-- **Auto-response mode** - Automatically responds to messages in specified channels
+- **Channel-based conversation** - Responds to all messages in specified channels
 - **Model switching** - Change Gemini models at runtime
 - **Conversation history** - Git-based persistent history per channel
 - **Channel-specific system prompts** - Customize AI behavior per channel
@@ -32,8 +32,8 @@ cp .env.example .env
 |----------|----------|-------------|
 | `GEMINI_API_KEY` | Yes | API key from Google AI Studio |
 | `DISCORD_BOT_TOKEN` | Yes | Bot token from Discord Developer Portal |
+| `GEMINI_CHANNEL_ID` | Yes | Channel IDs for bot responses (comma-separated) |
 | `GEMINI_MODEL` | No | Gemini model to use (default: `gemini-2.5-flash`) |
-| `GEMINI_CHANNEL_ID` | No | Channel IDs for auto-response (comma-separated) |
 
 ### 2. Install Dependencies / 依存関係のインストール
 
@@ -61,11 +61,13 @@ uv run python bot.py
 
 ---
 
-## Auto-Response Mode / 自動応答モード
+## Channel Configuration / チャンネル設定
 
-Set `GEMINI_CHANNEL_ID` to enable automatic responses in specified channels:
+The bot responds to all messages in the channels specified by `GEMINI_CHANNEL_ID`.
+This setting is required for the bot to function.
 
-`GEMINI_CHANNEL_ID`を設定すると、指定チャンネルで自動応答が有効になります:
+ボットは`GEMINI_CHANNEL_ID`で指定されたチャンネルの全メッセージに応答します。
+この設定はボットの動作に必須です。
 
 ```bash
 # Single channel / 単一チャンネル
@@ -79,6 +81,9 @@ GEMINI_CHANNEL_ID=123456789012345678,987654321098765432
 
 1. Enable Developer Mode in Discord Settings > Advanced
 2. Right-click a channel > "Copy ID"
+
+1. Discordの設定 > 詳細設定 > 「開発者モード」を有効化
+2. チャンネルを右クリック > 「IDをコピー」
 
 ---
 
