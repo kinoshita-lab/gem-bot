@@ -13,10 +13,10 @@ class I18nManager:
     """Manages internationalization for the bot.
 
     Stores language setting in history/config.json and loads translations
-    from locales/{lang}.json files.
+    from locales/{lang}.json files. Supported languages are auto-detected
+    from the locales directory.
     """
 
-    SUPPORTED_LANGUAGES = ["ja", "en"]
     DEFAULT_LANGUAGE = "ja"
 
     def __init__(self, config_dir: str = "history", locales_dir: str = "locales"):
@@ -33,12 +33,37 @@ class I18nManager:
         # Ensure directories exist
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load configuration
-        self._config = self._load_config()
+        # Auto-detect supported languages from locales directory
+        self._supported_languages: list[str] = self._detect_languages()
 
         # Load translations
         self._translations: dict[str, dict[str, str]] = {}
         self._load_translations()
+
+        # Load configuration (after translations so we can validate language)
+        self._config = self._load_config()
+
+    def _detect_languages(self) -> list[str]:
+        """Detect available languages from locales directory.
+
+        Returns:
+            List of language codes found in locales directory.
+        """
+        languages = []
+        if self.locales_dir.exists():
+            for lang_file in self.locales_dir.glob("*.json"):
+                lang_code = lang_file.stem  # e.g., "ja" from "ja.json"
+                languages.append(lang_code)
+
+        # Sort for consistent ordering, but ensure default is available
+        languages.sort()
+
+        if not languages:
+            print(f"Warning: No translation files found in {self.locales_dir}")
+            # Return default as fallback
+            return [self.DEFAULT_LANGUAGE]
+
+        return languages
 
     def _load_config(self) -> dict[str, Any]:
         """Load configuration from file.
@@ -48,8 +73,23 @@ class I18nManager:
         """
         if self.config_path.exists():
             with open(self.config_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        return {"language": self.DEFAULT_LANGUAGE}
+                config = json.load(f)
+                # Validate that configured language is still available
+                if config.get("language") not in self._supported_languages:
+                    config["language"] = self._get_default_language()
+                return config
+        return {"language": self._get_default_language()}
+
+    def _get_default_language(self) -> str:
+        """Get default language, preferring DEFAULT_LANGUAGE if available.
+
+        Returns:
+            Default language code.
+        """
+        if self.DEFAULT_LANGUAGE in self._supported_languages:
+            return self.DEFAULT_LANGUAGE
+        # Fall back to first available language
+        return self._supported_languages[0] if self._supported_languages else "en"
 
     def _save_config(self) -> None:
         """Save configuration to file."""
@@ -57,15 +97,28 @@ class I18nManager:
             json.dump(self._config, f, ensure_ascii=False, indent=2)
 
     def _load_translations(self) -> None:
-        """Load all translation files."""
-        for lang in self.SUPPORTED_LANGUAGES:
+        """Load all translation files from locales directory."""
+        for lang in self._supported_languages:
             lang_file = self.locales_dir / f"{lang}.json"
             if lang_file.exists():
                 with open(lang_file, "r", encoding="utf-8") as f:
                     self._translations[lang] = json.load(f)
             else:
-                print(f"Warning: Translation file not found: {lang_file}")
                 self._translations[lang] = {}
+
+    def reload_translations(self) -> None:
+        """Reload translations from disk.
+
+        Call this to pick up new language files without restarting.
+        """
+        self._supported_languages = self._detect_languages()
+        self._translations.clear()
+        self._load_translations()
+
+        # Validate current language is still available
+        if self.language not in self._supported_languages:
+            self._config["language"] = self._get_default_language()
+            self._save_config()
 
     @property
     def language(self) -> str:
@@ -74,7 +127,7 @@ class I18nManager:
         Returns:
             Current language code.
         """
-        return self._config.get("language", self.DEFAULT_LANGUAGE)
+        return self._config.get("language", self._get_default_language())
 
     @language.setter
     def language(self, value: str) -> None:
@@ -86,10 +139,10 @@ class I18nManager:
         Raises:
             ValueError: If language is not supported.
         """
-        if value not in self.SUPPORTED_LANGUAGES:
+        if value not in self._supported_languages:
             raise ValueError(
                 f"Unsupported language: {value}. "
-                f"Supported: {', '.join(self.SUPPORTED_LANGUAGES)}"
+                f"Supported: {', '.join(self._supported_languages)}"
             )
         self._config["language"] = value
         self._save_config()
@@ -109,7 +162,8 @@ class I18nManager:
 
         # Fallback to default language if key not found
         if key not in translations:
-            translations = self._translations.get(self.DEFAULT_LANGUAGE, {})
+            default_lang = self._get_default_language()
+            translations = self._translations.get(default_lang, {})
 
         text = translations.get(key, key)
 
@@ -126,6 +180,6 @@ class I18nManager:
         """Get list of supported language codes.
 
         Returns:
-            List of language codes.
+            List of language codes (auto-detected from locales directory).
         """
-        return self.SUPPORTED_LANGUAGES.copy()
+        return self._supported_languages.copy()
