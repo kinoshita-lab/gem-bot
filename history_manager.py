@@ -268,6 +268,89 @@ class HistoryManager:
         self.commit(channel_id, "Auto-save before branch switch")
         self._git(channel_id, "checkout", branch_name)
 
+    def merge_branch(
+        self, channel_id: int, source_branch: str, auto_commit: bool = True
+    ) -> int:
+        """Merge messages from source branch into current branch.
+
+        Only messages after the divergence point are merged.
+
+        Args:
+            channel_id: Discord channel ID.
+            source_branch: Name of the branch to merge from.
+            auto_commit: Whether to automatically commit changes.
+
+        Returns:
+            Number of messages merged.
+
+        Raises:
+            RuntimeError: If source branch doesn't exist or is current branch.
+        """
+        self._ensure_repo(channel_id)
+
+        current_branch = self.get_current_branch(channel_id)
+        if source_branch == current_branch:
+            raise RuntimeError("現在のブランチにはマージできません")
+
+        branches = self.list_branches(channel_id)
+        if source_branch not in branches:
+            raise RuntimeError(f"ブランチ '{source_branch}' が見つかりません")
+
+        # Load current branch messages
+        current_data = self.load_conversation(channel_id)
+        current_messages = current_data.get("messages", []) if current_data else []
+
+        # Switch to source branch and load its messages
+        self._git(channel_id, "checkout", source_branch)
+        source_data = self.load_conversation(channel_id)
+        source_messages = source_data.get("messages", []) if source_data else []
+
+        # Switch back to current branch
+        self._git(channel_id, "checkout", current_branch)
+
+        # Find divergence point
+        divergence = self._find_divergence_point(current_messages, source_messages)
+
+        # Get messages to merge (after divergence point)
+        messages_to_merge = source_messages[divergence:]
+
+        if not messages_to_merge:
+            return 0
+
+        # Append to current messages
+        merged_messages = current_messages + messages_to_merge
+
+        # Save merged conversation
+        model = current_data.get("model", "") if current_data else ""
+        self.save_conversation(channel_id, merged_messages, model, auto_commit=False)
+
+        if auto_commit:
+            self.commit(channel_id, f"Merge branch '{source_branch}'")
+
+        return len(messages_to_merge)
+
+    def _find_divergence_point(
+        self, current: list[dict[str, Any]], source: list[dict[str, Any]]
+    ) -> int:
+        """Find the index where two message lists diverge.
+
+        Args:
+            current: Messages from current branch.
+            source: Messages from source branch.
+
+        Returns:
+            Index of divergence point (first differing message).
+        """
+        divergence = 0
+        for i, (curr, src) in enumerate(zip(current, source)):
+            if curr.get("content") == src.get("content") and curr.get(
+                "role"
+            ) == src.get("role"):
+                divergence = i + 1
+            else:
+                break
+        return divergence
+
     def get_log(self, channel_id: int, limit: int = 10) -> list[dict[str, str]]:
         """Get commit history.
 
@@ -438,19 +521,38 @@ class HistoryManager:
         if auto_commit:
             self.commit(channel_id, "Update system prompt")
 
-    def _get_config_path(self, channel_id: int) -> Path:
-        """Get the path to the config file.
-
-        Args:
-            channel_id: Discord channel ID.
+    def _get_global_config_path(self) -> Path:
+        """Get the path to the global config file.
 
         Returns:
-            Path to the config.json file.
+            Path to history/config.json.
         """
-        return self._get_repo_path(channel_id) / "config.json"
+        return self.base_dir / "config.json"
+
+    def _load_global_config(self) -> dict[str, Any]:
+        """Load global configuration from file.
+
+        Returns:
+            Configuration dictionary.
+        """
+        path = self._get_global_config_path()
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {"channels": {}}
+
+    def _save_global_config(self, config: dict[str, Any]) -> None:
+        """Save global configuration to file.
+
+        Args:
+            config: Configuration dictionary.
+        """
+        path = self._get_global_config_path()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
 
     def load_model(self, channel_id: int, default_model: str) -> str:
-        """Load model name from config file.
+        """Load model name from global config file.
 
         Args:
             channel_id: Discord channel ID.
@@ -459,39 +561,26 @@ class HistoryManager:
         Returns:
             Model name.
         """
-        self._ensure_repo(channel_id)
-        path = self._get_config_path(channel_id)
+        config = self._load_global_config()
+        channels = config.get("channels", {})
+        channel_config = channels.get(str(channel_id), {})
+        return channel_config.get("model", default_model)
 
-        if not path.exists():
-            return default_model
-
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        return data.get("model", default_model)
-
-    def save_model(self, channel_id: int, model: str, auto_commit: bool = True) -> None:
-        """Save model name to config file.
+    def save_model(self, channel_id: int, model: str) -> None:
+        """Save model name to global config file.
 
         Args:
             channel_id: Discord channel ID.
             model: Model name.
-            auto_commit: Whether to automatically commit changes.
         """
-        self._ensure_repo(channel_id)
-        path = self._get_config_path(channel_id)
+        config = self._load_global_config()
 
-        # Load existing config or create new
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        else:
-            data = {}
+        if "channels" not in config:
+            config["channels"] = {}
 
-        data["model"] = model
+        channel_key = str(channel_id)
+        if channel_key not in config["channels"]:
+            config["channels"][channel_key] = {}
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-
-        if auto_commit:
-            self.commit(channel_id, f"Set model to {model}")
+        config["channels"][channel_key]["model"] = model
+        self._save_global_config(config)

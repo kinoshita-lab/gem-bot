@@ -279,6 +279,38 @@ class Commands(commands.Cog):
         except Exception as e:
             await ctx.send(self.t("branch_error", error=e))
 
+    @branch.command(name="merge")
+    async def branch_merge(self, ctx: commands.Context, branch_name: str | None = None):
+        """Merge another branch into the current branch."""
+        if branch_name is None:
+            await ctx.send(self.t("branch_merge_usage"))
+            return
+
+        channel_id = ctx.channel.id
+
+        try:
+            # Commit current state before merge
+            self.bot.history_manager.commit(channel_id, "Auto-save before merge")
+
+            # Merge branch
+            merged_count = self.bot.history_manager.merge_branch(
+                channel_id, branch_name
+            )
+
+            # Reload history from disk
+            self.bot._reload_history_from_disk(channel_id)
+
+            if merged_count > 0:
+                await ctx.send(
+                    self.t("branch_merged", branch=branch_name, count=merged_count)
+                )
+            else:
+                await ctx.send(self.t("branch_merge_nothing"))
+        except RuntimeError as e:
+            await ctx.send(self.t("branch_error", error=e))
+        except Exception as e:
+            await ctx.send(self.t("branch_error", error=e))
+
 
 async def setup(bot: commands.Bot):
     """Load the Commands cog."""

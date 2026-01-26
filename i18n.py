@@ -69,7 +69,7 @@ class I18nManager:
         """Load configuration from file.
 
         Returns:
-            Configuration dictionary.
+            Configuration dictionary (full config including channels, etc.).
         """
         if self.config_path.exists():
             with open(self.config_path, "r", encoding="utf-8") as f:
@@ -78,7 +78,7 @@ class I18nManager:
                 if config.get("language") not in self._supported_languages:
                     config["language"] = self._get_default_language()
                 return config
-        return {"language": self._get_default_language()}
+        return {"language": self._get_default_language(), "channels": {}}
 
     def _get_default_language(self) -> str:
         """Get default language, preferring DEFAULT_LANGUAGE if available.
@@ -92,9 +92,24 @@ class I18nManager:
         return self._supported_languages[0] if self._supported_languages else "en"
 
     def _save_config(self) -> None:
-        """Save configuration to file."""
+        """Save configuration to file.
+
+        Preserves existing keys (like channels) while updating language.
+        """
+        # Load existing config to preserve other keys
+        if self.config_path.exists():
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                existing_config = json.load(f)
+        else:
+            existing_config = {}
+
+        # Merge: update language while preserving other keys
+        existing_config["language"] = self._config.get(
+            "language", self._get_default_language()
+        )
+
         with open(self.config_path, "w", encoding="utf-8") as f:
-            json.dump(self._config, f, ensure_ascii=False, indent=2)
+            json.dump(existing_config, f, ensure_ascii=False, indent=2)
 
     def _load_translations(self) -> None:
         """Load all translation files from locales directory."""
