@@ -166,11 +166,11 @@ class GeminiBot(commands.Bot):
             http_options=types.HttpOptions(timeout=300000),  # 5 minutes in milliseconds
         )
 
-        # Current model (can be changed at runtime via !model set)
-        self.current_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        # Default model (used when a channel doesn't have a specific model set)
+        self.default_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-        # Pending model selections: user_id -> list of model names
-        self.pending_model_selections: dict[int, list[str]] = {}
+        # Pending model selections: user_id -> {channel_id, models}
+        self.pending_model_selections: dict[int, dict] = {}
 
         # Conversation history per channel
         self.conversation_history: dict[int, list] = {}
@@ -211,12 +211,52 @@ class GeminiBot(commands.Bot):
 
         history = self.conversation_history[channel_id]
         messages = self.history_manager.convert_to_serializable(history)
+        model = self.get_model(channel_id)
         self.history_manager.save_conversation(
             channel_id=channel_id,
             messages=messages,
-            model=self.current_model,
+            model=model,
             auto_commit=True,
         )
+
+    def _reload_history_from_disk(self, channel_id: int):
+        """Reload conversation history for a channel from disk.
+
+        Used after branch switch to sync memory with the new branch's state.
+        """
+        data = self.history_manager.load_conversation(channel_id)
+        if data and "messages" in data:
+            history = []
+            for msg in data["messages"]:
+                history.append(
+                    types.Content(
+                        role=msg["role"],
+                        parts=[types.Part.from_text(text=msg["content"])],
+                    )
+                )
+            self.conversation_history[channel_id] = history
+        else:
+            self.conversation_history[channel_id] = []
+
+    def get_model(self, channel_id: int) -> str:
+        """Get the model for a specific channel.
+
+        Args:
+            channel_id: Discord channel ID.
+
+        Returns:
+            Model name for the channel.
+        """
+        return self.history_manager.load_model(channel_id, self.default_model)
+
+    def set_model(self, channel_id: int, model: str) -> None:
+        """Set the model for a specific channel.
+
+        Args:
+            channel_id: Discord channel ID.
+            model: Model name.
+        """
+        self.history_manager.save_model(channel_id, model)
 
     async def send_response(self, channel, response_text: str):
         """Send a response to a channel, splitting if necessary."""
@@ -243,9 +283,10 @@ class GeminiBot(commands.Bot):
         try:
             # Load channel-specific system prompt
             system_prompt = self.history_manager.load_system_prompt(channel_id)
+            model = self.get_model(channel_id)
 
             response = await self.gemini_client.aio.models.generate_content(
-                model=self.current_model,
+                model=model,
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
                     tools=[types.Tool(google_search=types.GoogleSearch())],
@@ -309,13 +350,15 @@ async def on_message(message):
         # Handle number selection
         if content.isdigit():
             index = int(content) - 1
-            model_names = bot.pending_model_selections[user_id]
+            model_names = bot.pending_model_selections[user_id]["models"]
+            channel_id = bot.pending_model_selections[user_id]["channel_id"]
 
             if 0 <= index < len(model_names):
-                bot.current_model = model_names[index]
+                selected_model = model_names[index]
+                bot.set_model(channel_id, selected_model)
                 del bot.pending_model_selections[user_id]
                 await message.channel.send(
-                    bot.i18n.t("model_select_changed", model=bot.current_model)
+                    bot.i18n.t("model_select_changed", model=selected_model)
                 )
                 return
             else:

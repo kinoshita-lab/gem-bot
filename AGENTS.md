@@ -2,6 +2,10 @@
 
 このファイルはAIコーディングエージェント向けのガイドラインです。
 
+## 重要なルール
+
+**明示的に指示があるまで、コミットすることを禁止します。ユーザーが動作を確認する必要があります。**
+
 ## プロジェクト概要
 
 Discord上でGemini APIを使用してAIと会話できるボットです。
@@ -33,10 +37,12 @@ gemini_discord/
 `commands.Bot`を継承したカスタムクラス。以下の状態を保持：
 
 - `gemini_client`: Gemini APIクライアント
-- `current_model`: 現在使用中のモデル名
+- `default_model`: デフォルトのモデル名（チャンネル設定がない場合に使用）
 - `pending_model_selections`: モデル選択の対話状態
 - `conversation_history`: チャンネルごとの会話履歴
-- `system_prompt`: システムプロンプト
+- `history_manager`: Git管理された会話履歴・設定のマネージャー
+
+モデル設定はチャンネルごとに `history/{channel_id}/config.json` で管理される。
 
 ### Cog (cogs/commands.py)
 
@@ -73,7 +79,9 @@ async def newcommand(self, ctx: commands.Context):
 
 Cogからは `self.bot` を通じて共有状態にアクセスする：
 
-- `self.bot.current_model`
+- `self.bot.get_model(channel_id)`: チャンネルのモデルを取得
+- `self.bot.set_model(channel_id, model)`: チャンネルのモデルを設定
+- `self.bot.default_model`: デフォルトモデル
 - `self.bot.gemini_client`
 - `self.bot.conversation_history`
 - `self.bot.pending_model_selections`
@@ -97,7 +105,7 @@ python -m py_compile bot.py cogs/commands.py
 |--------|------|------|
 | `DISCORD_BOT_TOKEN` | Yes | Discord Botトークン |
 | `GEMINI_API_KEY` | Yes | Gemini APIキー |
-| `GEMINI_MODEL` | No | 使用するモデル (デフォルト: gemini-2.5-flash) |
+| `GEMINI_MODEL` | No | デフォルトモデル (デフォルト: gemini-2.5-flash)。チャンネルごとの設定がない場合に使用される |
 | `GEMINI_CHANNEL_ID` | No | 自動応答チャンネルID (カンマ区切りで複数可) |
 
 ## 注意事項

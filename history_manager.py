@@ -154,6 +154,32 @@ class HistoryManager:
         if auto_commit:
             self.commit(channel_id, f"Update conversation")
 
+    def clear_conversation(self, channel_id: int, auto_commit: bool = True) -> None:
+        """Clear all conversation history for a channel.
+
+        Args:
+            channel_id: Discord channel ID.
+            auto_commit: Whether to automatically commit changes.
+        """
+        self._ensure_repo(channel_id)
+        path = self._get_conversation_path(channel_id)
+
+        if path.exists():
+            # Save empty messages list
+            now = datetime.now(timezone.utc).isoformat()
+            data = {
+                "channel_id": channel_id,
+                "model": "",
+                "created_at": now,
+                "updated_at": now,
+                "messages": [],
+            }
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+
+            if auto_commit:
+                self.commit(channel_id, "Clear conversation history")
+
     def commit(self, channel_id: int, message: str) -> bool:
         """Commit current changes to Git.
 
@@ -205,15 +231,30 @@ class HistoryManager:
         branches = result.stdout.strip().split("\n")
         return [b for b in branches if b]
 
-    def create_branch(self, channel_id: int, branch_name: str) -> None:
+    def create_branch(
+        self, channel_id: int, branch_name: str, switch: bool = False
+    ) -> None:
         """Create a new branch from the current state.
 
         Args:
             channel_id: Discord channel ID.
             branch_name: Name for the new branch.
+            switch: If True, switch to the new branch after creation.
+
+        Raises:
+            RuntimeError: If branch already exists.
         """
         self._ensure_repo(channel_id)
+
+        # Check if branch already exists
+        existing = self.list_branches(channel_id)
+        if branch_name in existing:
+            raise RuntimeError(f"ブランチ '{branch_name}' は既に存在します")
+
         self._git(channel_id, "branch", branch_name)
+
+        if switch:
+            self._git(channel_id, "checkout", branch_name)
 
     def switch_branch(self, channel_id: int, branch_name: str) -> None:
         """Switch to a different branch.
@@ -396,3 +437,61 @@ class HistoryManager:
 
         if auto_commit:
             self.commit(channel_id, "Update system prompt")
+
+    def _get_config_path(self, channel_id: int) -> Path:
+        """Get the path to the config file.
+
+        Args:
+            channel_id: Discord channel ID.
+
+        Returns:
+            Path to the config.json file.
+        """
+        return self._get_repo_path(channel_id) / "config.json"
+
+    def load_model(self, channel_id: int, default_model: str) -> str:
+        """Load model name from config file.
+
+        Args:
+            channel_id: Discord channel ID.
+            default_model: Default model name if not configured.
+
+        Returns:
+            Model name.
+        """
+        self._ensure_repo(channel_id)
+        path = self._get_config_path(channel_id)
+
+        if not path.exists():
+            return default_model
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        return data.get("model", default_model)
+
+    def save_model(self, channel_id: int, model: str, auto_commit: bool = True) -> None:
+        """Save model name to config file.
+
+        Args:
+            channel_id: Discord channel ID.
+            model: Model name.
+            auto_commit: Whether to automatically commit changes.
+        """
+        self._ensure_repo(channel_id)
+        path = self._get_config_path(channel_id)
+
+        # Load existing config or create new
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {}
+
+        data["model"] = model
+
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        if auto_commit:
+            self.commit(channel_id, f"Set model to {model}")
