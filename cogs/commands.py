@@ -8,30 +8,26 @@ class Commands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @commands.command(name="ask")
-    async def ask(self, ctx: commands.Context, *, prompt: str):
-        """Asks Gemini a question."""
-        async with ctx.typing():
-            try:
-                response_text = await self.bot.ask_gemini(ctx.channel.id, prompt)
-                await self.bot.send_response(ctx.channel, response_text)
-            except Exception as e:
-                await ctx.send(f"An error occurred: {e}")
+    def t(self, key: str, **kwargs) -> str:
+        """Shortcut for translation."""
+        return self.bot.i18n.t(key, **kwargs)
 
     @commands.command(name="info")
     async def info(self, ctx: commands.Context):
         """Displays information about the bot."""
-        embed = discord.Embed(title="Bot Information", color=discord.Color.blue())
-        embed.add_field(name="Model", value=self.bot.current_model, inline=False)
+        embed = discord.Embed(
+            title=self.t("bot_info_title"), color=discord.Color.blue()
+        )
+        embed.add_field(
+            name=self.t("model"), value=self.bot.current_model, inline=False
+        )
         await ctx.send(embed=embed)
 
     @commands.group(name="model")
     async def model(self, ctx: commands.Context):
         """Model management commands."""
         if ctx.invoked_subcommand is None:
-            await ctx.send(
-                "使用方法:\n`!model list` - 利用可能なモデル一覧を表示\n`!model set` - 使用するモデルを変更"
-            )
+            await ctx.send(self.t("model_usage"))
 
     @model.command(name="list")
     async def model_list(self, ctx: commands.Context):
@@ -44,8 +40,10 @@ class Commands(commands.Cog):
 
                 # Create embed for model list
                 embed = discord.Embed(
-                    title="利用可能な Gemini モデル",
-                    description=f"現在使用中: **{self.bot.current_model}**",
+                    title=self.t("model_list_title"),
+                    description=self.t(
+                        "model_list_current", model=self.bot.current_model
+                    ),
                     color=discord.Color.green(),
                 )
 
@@ -67,9 +65,11 @@ class Commands(commands.Cog):
                 for i in range(0, len(model_names), chunk_size):
                     chunk = model_names[i : i + chunk_size]
                     field_name = (
-                        "モデル一覧"
+                        self.t("model_list_field")
                         if i == 0
-                        else f"モデル一覧 (続き {i // chunk_size + 1})"
+                        else self.t(
+                            "model_list_field_continued", num=i // chunk_size + 1
+                        )
                     )
                     embed.add_field(
                         name=field_name,
@@ -77,11 +77,13 @@ class Commands(commands.Cog):
                         inline=False,
                     )
 
-                embed.set_footer(text=f"合計: {len(model_names)} モデル")
+                embed.set_footer(
+                    text=self.t("model_list_footer", count=len(model_names))
+                )
                 await ctx.send(embed=embed)
 
             except Exception as e:
-                await ctx.send(f"モデル一覧の取得中にエラーが発生しました: {e}")
+                await ctx.send(self.t("model_list_error", error=e))
 
     @model.command(name="set")
     async def model_set(self, ctx: commands.Context):
@@ -110,8 +112,10 @@ class Commands(commands.Cog):
 
                 # Send selection prompt
                 embed = discord.Embed(
-                    title="モデルを選択してください",
-                    description=f"現在使用中: **{self.bot.current_model}**\n\n番号を入力してモデルを選択してください。\n`cancel` でキャンセルできます。",
+                    title=self.t("model_select_title"),
+                    description=self.t(
+                        "model_select_description", model=self.bot.current_model
+                    ),
                     color=discord.Color.blue(),
                 )
 
@@ -119,7 +123,13 @@ class Commands(commands.Cog):
                 chunk_size = 25
                 for i in range(0, len(model_names), chunk_size):
                     chunk = model_names[i : i + chunk_size]
-                    field_name = "モデル一覧" if i == 0 else "モデル一覧 (続き)"
+                    field_name = (
+                        self.t("model_list_field")
+                        if i == 0
+                        else self.t(
+                            "model_list_field_continued", num=i // chunk_size + 1
+                        )
+                    )
                     field_value = "\n".join(
                         f"`{i + j + 1}`. {name}" for j, name in enumerate(chunk)
                     )
@@ -128,7 +138,27 @@ class Commands(commands.Cog):
                 await ctx.send(embed=embed)
 
             except Exception as e:
-                await ctx.send(f"モデル一覧の取得中にエラーが発生しました: {e}")
+                await ctx.send(self.t("model_list_error", error=e))
+
+    @commands.command(name="lang")
+    async def lang(self, ctx: commands.Context, language: str | None = None):
+        """Changes the display language."""
+        supported = self.bot.i18n.get_supported_languages()
+        langs_str = ", ".join(supported)
+
+        if language is None:
+            # Show current language and usage
+            await ctx.send(
+                self.t("lang_usage", langs=langs_str, current=self.bot.i18n.language)
+            )
+            return
+
+        if language not in supported:
+            await ctx.send(self.t("lang_invalid", langs=langs_str))
+            return
+
+        self.bot.i18n.language = language
+        await ctx.send(self.t("lang_changed", lang=language))
 
 
 async def setup(bot: commands.Bot):

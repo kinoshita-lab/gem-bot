@@ -7,6 +7,121 @@ from google.genai import types
 from dotenv import load_dotenv
 
 from history_manager import HistoryManager
+from i18n import I18nManager
+
+
+class LocalizedHelpCommand(commands.DefaultHelpCommand):
+    """Custom help command with i18n support."""
+
+    def t(self, key: str, **kwargs) -> str:
+        """Shortcut for translation."""
+        return self.context.bot.i18n.t(key, **kwargs)
+
+    @property
+    def _lang(self) -> str:
+        """Get current language."""
+        return self.context.bot.i18n.language
+
+    def get_ending_note(self):
+        """Return the ending note for the help command."""
+        command_name = self.invoked_with
+        return (
+            f"Type {self.context.clean_prefix}{command_name} <command> for more info on a command."
+            if self._lang == "en"
+            else f"`{self.context.clean_prefix}{command_name} <コマンド名>` で詳細を表示"
+        )
+
+    def get_command_signature(self, command):
+        """Return the command signature."""
+        return (
+            f"{self.context.clean_prefix}{command.qualified_name} {command.signature}"
+        )
+
+    async def send_bot_help(self, mapping):
+        """Send help for all commands."""
+        embed = discord.Embed(
+            title=self.t("help_category_commands"),
+            description=self.t("help_bot_description"),
+            color=discord.Color.blue(),
+        )
+
+        for cog, cmds in mapping.items():
+            filtered = await self.filter_commands(cmds, sort=True)
+            if filtered:
+                command_list = []
+                for cmd in filtered:
+                    # Get localized description
+                    desc = self._get_localized_command_help(cmd)
+                    command_list.append(
+                        f"`{self.context.clean_prefix}{cmd.name}` - {desc}"
+                    )
+
+                cog_name = cog.qualified_name if cog else self.t("help_no_category")
+                embed.add_field(
+                    name=cog_name,
+                    value="\n".join(command_list),
+                    inline=False,
+                )
+
+        embed.set_footer(text=self.get_ending_note())
+        await self.get_destination().send(embed=embed)
+
+    def _get_localized_command_help(self, command) -> str:
+        """Get localized help text for a command."""
+        key = f"help_command_{command.name}"
+        translated = self.t(key)
+        # If no translation found (returns key), use original help
+        if translated == key:
+            return command.short_doc or command.help or ""
+        return translated
+
+    async def send_command_help(self, command):
+        """Send help for a specific command."""
+        embed = discord.Embed(
+            title=f"{self.context.clean_prefix}{command.qualified_name}",
+            description=self._get_localized_command_help(command),
+            color=discord.Color.blue(),
+        )
+
+        if command.aliases:
+            embed.add_field(
+                name="Aliases" if self._lang == "en" else "別名",
+                value=", ".join(command.aliases),
+                inline=False,
+            )
+
+        usage = self.get_command_signature(command)
+        embed.add_field(
+            name="Usage" if self._lang == "en" else "使用方法",
+            value=f"`{usage}`",
+            inline=False,
+        )
+
+        await self.get_destination().send(embed=embed)
+
+    async def send_group_help(self, group):
+        """Send help for a command group."""
+        embed = discord.Embed(
+            title=f"{self.context.clean_prefix}{group.qualified_name}",
+            description=self._get_localized_command_help(group),
+            color=discord.Color.blue(),
+        )
+
+        filtered = await self.filter_commands(group.commands, sort=True)
+        if filtered:
+            subcommands = []
+            for cmd in filtered:
+                desc = self._get_localized_command_help(cmd)
+                subcommands.append(f"`{cmd.name}` - {desc}")
+
+            embed.add_field(
+                name="Subcommands" if self._lang == "en" else "サブコマンド",
+                value="\n".join(subcommands),
+                inline=False,
+            )
+
+        await self.get_destination().send(embed=embed)
+
 
 # Load environment variables
 load_dotenv()
@@ -60,6 +175,9 @@ class GeminiBot(commands.Bot):
 
         # History manager for Git-based persistence
         self.history_manager = HistoryManager()
+
+        # I18n manager for translations
+        self.i18n = I18nManager()
 
     async def setup_hook(self):
         """Load cogs when the bot starts."""
@@ -155,7 +273,10 @@ class GeminiBot(commands.Bot):
 # Initialize Discord Bot
 intents = discord.Intents.default()
 intents.message_content = True
-bot = GeminiBot(command_prefix="!", intents=intents)
+bot = GeminiBot(command_prefix="!", intents=intents, help_command=None)
+
+# Set custom help command
+bot.help_command = LocalizedHelpCommand()
 
 
 @bot.event
@@ -183,7 +304,7 @@ async def on_message(message):
         # Handle cancel
         if content == "cancel":
             del bot.pending_model_selections[user_id]
-            await message.channel.send("モデル選択をキャンセルしました。")
+            await message.channel.send(bot.i18n.t("model_select_cancelled"))
             return
 
         # Handle number selection
@@ -195,17 +316,17 @@ async def on_message(message):
                 bot.current_model = model_names[index]
                 del bot.pending_model_selections[user_id]
                 await message.channel.send(
-                    f"モデルを **{bot.current_model}** に変更しました。"
+                    bot.i18n.t("model_select_changed", model=bot.current_model)
                 )
                 return
             else:
                 await message.channel.send(
-                    f"無効な番号です。1 から {len(model_names)} の数字を入力してください。\n`cancel` でキャンセルできます。"
+                    bot.i18n.t("model_select_invalid_number", max=len(model_names))
                 )
                 return
 
         # Invalid input - prompt again
-        await message.channel.send("数字または `cancel` を入力してください。")
+        await message.channel.send(bot.i18n.t("model_select_prompt"))
         return
 
     # Check if the message is a command (starts with prefix)
