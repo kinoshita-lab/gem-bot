@@ -279,6 +279,25 @@ class Commands(commands.Cog):
         except Exception as e:
             await ctx.send(self.t("branch_error", error=e))
 
+    @branch.command(name="delete")
+    async def branch_delete(
+        self, ctx: commands.Context, branch_name: str | None = None
+    ):
+        """Delete a branch."""
+        if branch_name is None:
+            await ctx.send(self.t("branch_delete_usage"))
+            return
+
+        channel_id = ctx.channel.id
+
+        try:
+            self.bot.history_manager.delete_branch(channel_id, branch_name)
+            await ctx.send(self.t("branch_deleted", branch=branch_name))
+        except RuntimeError as e:
+            await ctx.send(self.t("branch_error", error=e))
+        except Exception as e:
+            await ctx.send(self.t("branch_error", error=e))
+
     @branch.command(name="merge")
     async def branch_merge(self, ctx: commands.Context, branch_name: str | None = None):
         """Merge another branch into the current branch."""

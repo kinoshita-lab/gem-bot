@@ -268,6 +268,35 @@ class HistoryManager:
         self.commit(channel_id, "Auto-save before branch switch")
         self._git(channel_id, "checkout", branch_name)
 
+    def delete_branch(self, channel_id: int, branch_name: str) -> None:
+        """Delete a branch.
+
+        Args:
+            channel_id: Discord channel ID.
+            branch_name: Name of the branch to delete.
+
+        Raises:
+            RuntimeError: If branch is 'main', current branch, or doesn't exist.
+        """
+        self._ensure_repo(channel_id)
+
+        # Prevent deleting main branch
+        if branch_name == "main":
+            raise RuntimeError("mainブランチは削除できません")
+
+        # Prevent deleting current branch
+        current = self.get_current_branch(channel_id)
+        if branch_name == current:
+            raise RuntimeError("現在のブランチは削除できません")
+
+        # Check if branch exists
+        branches = self.list_branches(channel_id)
+        if branch_name not in branches:
+            raise RuntimeError(f"ブランチ '{branch_name}' が見つかりません")
+
+        # Force delete the branch
+        self._git(channel_id, "branch", "-D", branch_name)
+
     def merge_branch(
         self, channel_id: int, source_branch: str, auto_commit: bool = True
     ) -> int:
