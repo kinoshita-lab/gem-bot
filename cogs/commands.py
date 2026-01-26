@@ -330,6 +330,68 @@ class Commands(commands.Cog):
         except Exception as e:
             await ctx.send(self.t("branch_error", error=e))
 
+    @commands.group(name="prompt")
+    async def prompt(self, ctx: commands.Context):
+        """System prompt management commands."""
+        if ctx.invoked_subcommand is None:
+            await ctx.send(self.t("prompt_usage"))
+
+    @prompt.command(name="show")
+    async def prompt_show(self, ctx: commands.Context):
+        """Show the current system prompt."""
+        channel_id = ctx.channel.id
+
+        try:
+            content = self.bot.history_manager.load_system_prompt(channel_id)
+
+            if not content.strip():
+                await ctx.send(self.t("prompt_show_empty"))
+                return
+
+            # Discord message limit is 2000 chars, use embed for better formatting
+            # Split if too long
+            if len(content) <= 1900:
+                embed = discord.Embed(
+                    title=self.t("prompt_show_title"),
+                    description=f"```\n{content}\n```",
+                    color=discord.Color.blue(),
+                )
+                await ctx.send(embed=embed)
+            else:
+                # Split into chunks
+                await ctx.send(self.t("prompt_show_title"))
+                chunks = [content[i : i + 1900] for i in range(0, len(content), 1900)]
+                for chunk in chunks:
+                    await ctx.send(f"```\n{chunk}\n```")
+        except Exception as e:
+            await ctx.send(self.t("prompt_error", error=e))
+
+    @prompt.command(name="set")
+    async def prompt_set(self, ctx: commands.Context, *, content: str | None = None):
+        """Set the system prompt."""
+        if content is None:
+            await ctx.send(self.t("prompt_set_usage"))
+            return
+
+        channel_id = ctx.channel.id
+
+        try:
+            self.bot.history_manager.save_system_prompt(channel_id, content)
+            await ctx.send(self.t("prompt_set_success"))
+        except Exception as e:
+            await ctx.send(self.t("prompt_error", error=e))
+
+    @prompt.command(name="clear")
+    async def prompt_clear(self, ctx: commands.Context):
+        """Clear the system prompt."""
+        channel_id = ctx.channel.id
+
+        try:
+            self.bot.history_manager.save_system_prompt(channel_id, "")
+            await ctx.send(self.t("prompt_clear_success"))
+        except Exception as e:
+            await ctx.send(self.t("prompt_error", error=e))
+
 
 async def setup(bot: commands.Bot):
     """Load the Commands cog."""
