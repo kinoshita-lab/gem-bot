@@ -17,18 +17,12 @@ class LocalizedHelpCommand(commands.DefaultHelpCommand):
         """Shortcut for translation."""
         return self.context.bot.i18n.t(key, **kwargs)
 
-    @property
-    def _lang(self) -> str:
-        """Get current language."""
-        return self.context.bot.i18n.language
-
     def get_ending_note(self):
         """Return the ending note for the help command."""
-        command_name = self.invoked_with
-        return (
-            f"Type {self.context.clean_prefix}{command_name} <command> for more info on a command."
-            if self._lang == "en"
-            else f"`{self.context.clean_prefix}{command_name} <コマンド名>` で詳細を表示"
+        return self.t(
+            "help_ending_note",
+            prefix=self.context.clean_prefix,
+            command=self.invoked_with,
         )
 
     def get_command_signature(self, command):
@@ -85,14 +79,14 @@ class LocalizedHelpCommand(commands.DefaultHelpCommand):
 
         if command.aliases:
             embed.add_field(
-                name="Aliases" if self._lang == "en" else "別名",
+                name=self.t("help_aliases"),
                 value=", ".join(command.aliases),
                 inline=False,
             )
 
         usage = self.get_command_signature(command)
         embed.add_field(
-            name="Usage" if self._lang == "en" else "使用方法",
+            name=self.t("help_usage"),
             value=f"`{usage}`",
             inline=False,
         )
@@ -115,7 +109,7 @@ class LocalizedHelpCommand(commands.DefaultHelpCommand):
                 subcommands.append(f"`{cmd.name}` - {desc}")
 
             embed.add_field(
-                name="Subcommands" if self._lang == "en" else "サブコマンド",
+                name=self.t("help_subcommands"),
                 value="\n".join(subcommands),
                 inline=False,
             )

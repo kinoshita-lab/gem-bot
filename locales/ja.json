@@ -29,5 +29,9 @@
   "help_command_set": "使用する Gemini モデルを対話的に選択します。",
   "help_category_commands": "コマンド一覧",
   "help_no_category": "その他",
-  "help_bot_description": "Gemini API を使用した Discord ボットです。"
+  "help_bot_description": "Gemini API を使用した Discord ボットです。",
+  "help_ending_note": "`{prefix}{command}` <コマンド名> で詳細を表示",
+  "help_aliases": "別名",
+  "help_usage": "使用方法",
+  "help_subcommands": "サブコマンド"
 }

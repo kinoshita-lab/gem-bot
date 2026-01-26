@@ -29,5 +29,9 @@
   "help_command_set": "Interactively select the Gemini model to use.",
   "help_category_commands": "Commands",
   "help_no_category": "Other",
-  "help_bot_description": "A Discord bot powered by Gemini API."
+  "help_bot_description": "A Discord bot powered by Gemini API.",
+  "help_ending_note": "Type {prefix}{command} <command> for more info on a command.",
+  "help_aliases": "Aliases",
+  "help_usage": "Usage",
+  "help_subcommands": "Subcommands"
 }
