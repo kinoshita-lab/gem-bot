@@ -12,7 +12,11 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_CHANNEL_ID = os.getenv("GEMINI_CHANNEL_ID")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Current model (can be changed at runtime via !model set)
+current_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+# Pending model selections: user_id -> list of model names
+pending_model_selections: dict[int, list[str]] = {}
 
 # Check for required environment variables
 if not DISCORD_TOKEN:
@@ -32,7 +36,9 @@ if GEMINI_CHANNEL_ID:
             try:
                 gemini_channel_ids.add(int(channel_id_str))
             except ValueError:
-                print(f"Warning: Invalid channel ID '{channel_id_str}' in GEMINI_CHANNEL_ID")
+                print(
+                    f"Warning: Invalid channel ID '{channel_id_str}' in GEMINI_CHANNEL_ID"
+                )
 
 # Load system prompt from GEMINI.md
 try:
@@ -73,7 +79,9 @@ async def send_response(channel, response_text: str):
         for i in range(0, len(response_text), 2000):
             await channel.send(response_text[i : i + 2000])
     else:
-        await channel.send(response_text if response_text else "No response from Gemini.")
+        await channel.send(
+            response_text if response_text else "No response from Gemini."
+        )
 
 
 async def ask_gemini(channel_id: int, prompt: str) -> str:
@@ -93,7 +101,7 @@ async def ask_gemini(channel_id: int, prompt: str) -> str:
 
     try:
         response = client.models.generate_content(
-            model=GEMINI_MODEL,
+            model=current_model,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 tools=[types.Tool(google_search=types.GoogleSearch())],
@@ -120,8 +128,44 @@ async def ask_gemini(channel_id: int, prompt: str) -> str:
 @bot.event
 async def on_message(message):
     """Handle incoming messages."""
+    global current_model
+
     # Ignore messages from the bot itself
     if message.author == bot.user:
+        return
+
+    user_id = message.author.id
+
+    # Check if this user has a pending model selection
+    if user_id in pending_model_selections:
+        content = message.content.strip().lower()
+
+        # Handle cancel
+        if content == "cancel":
+            del pending_model_selections[user_id]
+            await message.channel.send("モデル選択をキャンセルしました。")
+            return
+
+        # Handle number selection
+        if content.isdigit():
+            index = int(content) - 1
+            model_names = pending_model_selections[user_id]
+
+            if 0 <= index < len(model_names):
+                current_model = model_names[index]
+                del pending_model_selections[user_id]
+                await message.channel.send(
+                    f"モデルを **{current_model}** に変更しました。"
+                )
+                return
+            else:
+                await message.channel.send(
+                    f"無効な番号です。1 から {len(model_names)} の数字を入力してください。\n`cancel` でキャンセルできます。"
+                )
+                return
+
+        # Invalid input - prompt again
+        await message.channel.send("数字または `cancel` を入力してください。")
         return
 
     # Check if the message is a command (starts with prefix)
@@ -154,11 +198,8 @@ async def ask(ctx, *, prompt):
 @bot.command(name="info")
 async def info(ctx):
     """Displays information about the bot."""
-    embed = discord.Embed(
-        title="Bot Information",
-        color=discord.Color.blue()
-    )
-    embed.add_field(name="Model", value=GEMINI_MODEL, inline=False)
+    embed = discord.Embed(title="Bot Information", color=discord.Color.blue())
+    embed.add_field(name="Model", value=current_model, inline=False)
     await ctx.send(embed=embed)
 
 
@@ -166,7 +207,9 @@ async def info(ctx):
 async def model(ctx):
     """Model management commands."""
     if ctx.invoked_subcommand is None:
-        await ctx.send("使用方法: `!model list` - 利用可能なモデル一覧を表示")
+        await ctx.send(
+            "使用方法:\n`!model list` - 利用可能なモデル一覧を表示\n`!model set` - 使用するモデルを変更"
+        )
 
 
 @model.command(name="list")
@@ -175,38 +218,98 @@ async def model_list(ctx):
     async with ctx.typing():
         try:
             models = list(client.models.list())
-            
+
             # Create embed for model list
             embed = discord.Embed(
                 title="利用可能な Gemini モデル",
-                description=f"現在使用中: **{GEMINI_MODEL}**",
-                color=discord.Color.green()
+                description=f"現在使用中: **{current_model}**",
+                color=discord.Color.green(),
             )
-            
+
             # Group models by base name and show them
-            model_names = []
+            model_names: list[str] = []
             for m in models:
                 # Extract model name (e.g., "models/gemini-2.0-flash" -> "gemini-2.0-flash")
-                name = m.name.replace("models/", "") if m.name.startswith("models/") else m.name
-                model_names.append(name)
-            
+                name = m.name
+                if name:
+                    if name.startswith("models/"):
+                        name = name.replace("models/", "")
+                    model_names.append(name)
+
             # Sort model names
             model_names.sort()
-            
+
             # Split into chunks if too many models
             chunk_size = 20
             for i in range(0, len(model_names), chunk_size):
-                chunk = model_names[i:i + chunk_size]
-                field_name = "モデル一覧" if i == 0 else f"モデル一覧 (続き {i // chunk_size + 1})"
+                chunk = model_names[i : i + chunk_size]
+                field_name = (
+                    "モデル一覧"
+                    if i == 0
+                    else f"モデル一覧 (続き {i // chunk_size + 1})"
+                )
                 embed.add_field(
                     name=field_name,
                     value="\n".join(f"• {name}" for name in chunk),
-                    inline=False
+                    inline=False,
                 )
-            
+
             embed.set_footer(text=f"合計: {len(model_names)} モデル")
             await ctx.send(embed=embed)
-            
+
+        except Exception as e:
+            await ctx.send(f"モデル一覧の取得中にエラーが発生しました: {e}")
+
+
+@model.command(name="set")
+async def model_set(ctx):
+    """Interactively set the Gemini model to use."""
+    global pending_model_selections
+
+    user_id = ctx.author.id
+
+    async with ctx.typing():
+        try:
+            # Fetch available models
+            models = list(client.models.list())
+            model_names: list[str] = []
+            for m in models:
+                name = m.name
+                if name:
+                    if name.startswith("models/"):
+                        name = name.replace("models/", "")
+                    model_names.append(name)
+
+            # Sort model names
+            model_names.sort()
+
+            # Register pending selection (overwrites any previous selection for this user)
+            pending_model_selections[user_id] = model_names
+
+            # Create numbered list
+            model_list_text = "\n".join(
+                f"{i + 1}. {name}" for i, name in enumerate(model_names)
+            )
+
+            # Send selection prompt
+            embed = discord.Embed(
+                title="モデルを選択してください",
+                description=f"現在使用中: **{current_model}**\n\n番号を入力してモデルを選択してください。\n`cancel` でキャンセルできます。",
+                color=discord.Color.blue(),
+            )
+
+            # Split into chunks if too many models
+            chunk_size = 25
+            for i in range(0, len(model_names), chunk_size):
+                chunk = model_names[i : i + chunk_size]
+                field_name = "モデル一覧" if i == 0 else f"モデル一覧 (続き)"
+                field_value = "\n".join(
+                    f"`{i + j + 1}`. {name}" for j, name in enumerate(chunk)
+                )
+                embed.add_field(name=field_name, value=field_value, inline=False)
+
+            await ctx.send(embed=embed)
+
         except Exception as e:
             await ctx.send(f"モデル一覧の取得中にエラーが発生しました: {e}")
 
