@@ -1,11 +1,12 @@
 import os
-from datetime import datetime
 
 import discord
 from discord.ext import commands
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+
+from history_manager import HistoryManager
 
 # Load environment variables
 load_dotenv()
@@ -35,14 +36,6 @@ if GEMINI_CHANNEL_ID:
                     f"Warning: Invalid channel ID '{channel_id_str}' in GEMINI_CHANNEL_ID"
                 )
 
-# Load system prompt from GEMINI.md
-try:
-    with open("GEMINI.md", "r", encoding="utf-8") as f:
-        system_prompt = f.read()
-except FileNotFoundError:
-    print("Warning: GEMINI.md not found. Using empty system prompt.")
-    system_prompt = ""
-
 
 class GeminiBot(commands.Bot):
     """Custom Bot class with Gemini integration."""
@@ -65,12 +58,45 @@ class GeminiBot(commands.Bot):
         # Conversation history per channel
         self.conversation_history: dict[int, list] = {}
 
-        # System prompt
-        self.system_prompt = system_prompt
+        # History manager for Git-based persistence
+        self.history_manager = HistoryManager()
 
     async def setup_hook(self):
         """Load cogs when the bot starts."""
         await self.load_extension("cogs.commands")
+
+        # Load existing conversation histories from disk
+        self._load_histories_from_disk()
+
+    def _load_histories_from_disk(self):
+        """Load all conversation histories from disk on startup."""
+        saved_conversations = self.history_manager.load_all_conversations()
+        for channel_id, messages in saved_conversations.items():
+            # Convert saved messages back to Gemini Content format
+            history = []
+            for msg in messages:
+                history.append(
+                    types.Content(
+                        role=msg["role"],
+                        parts=[types.Part.from_text(text=msg["content"])],
+                    )
+                )
+            self.conversation_history[channel_id] = history
+        print(f"Loaded conversation history for {len(saved_conversations)} channels")
+
+    def _save_history_to_disk(self, channel_id: int):
+        """Save conversation history for a channel to disk."""
+        if channel_id not in self.conversation_history:
+            return
+
+        history = self.conversation_history[channel_id]
+        messages = self.history_manager.convert_to_serializable(history)
+        self.history_manager.save_conversation(
+            channel_id=channel_id,
+            messages=messages,
+            model=self.current_model,
+            auto_commit=True,
+        )
 
     async def send_response(self, channel, response_text: str):
         """Send a response to a channel, splitting if necessary."""
@@ -89,22 +115,19 @@ class GeminiBot(commands.Bot):
         if channel_id not in self.conversation_history:
             self.conversation_history[channel_id] = []
 
-        # Add current time prefix to the prompt
-        current_time = datetime.now().strftime("%Y%m%d%H%M%S")
-        prompt_with_time = f"今の時間は {current_time} です。\n{prompt}"
-
         # Add user's message to history
         self.conversation_history[channel_id].append(
-            types.Content(
-                role="user", parts=[types.Part.from_text(text=prompt_with_time)]
-            )
+            types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
         )
 
         try:
+            # Load channel-specific system prompt
+            system_prompt = self.history_manager.load_system_prompt(channel_id)
+
             response = await self.gemini_client.aio.models.generate_content(
                 model=self.current_model,
                 config=types.GenerateContentConfig(
-                    system_instruction=self.system_prompt,
+                    system_instruction=system_prompt,
                     tools=[types.Tool(google_search=types.GoogleSearch())],
                 ),
                 contents=self.conversation_history[channel_id],
@@ -117,6 +140,9 @@ class GeminiBot(commands.Bot):
                     role="model", parts=[types.Part.from_text(text=response_text)]
                 )
             )
+
+            # Save to disk with Git commit
+            self._save_history_to_disk(channel_id)
 
             return response_text
         except Exception as e:
