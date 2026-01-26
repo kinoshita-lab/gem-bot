@@ -100,7 +100,7 @@ async def ask_gemini(channel_id: int, prompt: str) -> str:
     )
 
     try:
-        response = client.models.generate_content(
+        response = await client.aio.models.generate_content(
             model=current_model,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
@@ -217,7 +217,7 @@ async def model_list(ctx):
     """Lists all available Gemini models."""
     async with ctx.typing():
         try:
-            models = list(client.models.list())
+            models = [m async for m in await client.aio.models.list()]
 
             # Create embed for model list
             embed = discord.Embed(
@@ -271,7 +271,7 @@ async def model_set(ctx):
     async with ctx.typing():
         try:
             # Fetch available models
-            models = list(client.models.list())
+            models = [m async for m in await client.aio.models.list()]
             model_names: list[str] = []
             for m in models:
                 name = m.name
