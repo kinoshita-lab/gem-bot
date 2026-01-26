@@ -162,5 +162,54 @@ async def info(ctx):
     await ctx.send(embed=embed)
 
 
+@bot.group(name="model")
+async def model(ctx):
+    """Model management commands."""
+    if ctx.invoked_subcommand is None:
+        await ctx.send("使用方法: `!model list` - 利用可能なモデル一覧を表示")
+
+
+@model.command(name="list")
+async def model_list(ctx):
+    """Lists all available Gemini models."""
+    async with ctx.typing():
+        try:
+            models = list(client.models.list())
+            
+            # Create embed for model list
+            embed = discord.Embed(
+                title="利用可能な Gemini モデル",
+                description=f"現在使用中: **{GEMINI_MODEL}**",
+                color=discord.Color.green()
+            )
+            
+            # Group models by base name and show them
+            model_names = []
+            for m in models:
+                # Extract model name (e.g., "models/gemini-2.0-flash" -> "gemini-2.0-flash")
+                name = m.name.replace("models/", "") if m.name.startswith("models/") else m.name
+                model_names.append(name)
+            
+            # Sort model names
+            model_names.sort()
+            
+            # Split into chunks if too many models
+            chunk_size = 20
+            for i in range(0, len(model_names), chunk_size):
+                chunk = model_names[i:i + chunk_size]
+                field_name = "モデル一覧" if i == 0 else f"モデル一覧 (続き {i // chunk_size + 1})"
+                embed.add_field(
+                    name=field_name,
+                    value="\n".join(f"• {name}" for name in chunk),
+                    inline=False
+                )
+            
+            embed.set_footer(text=f"合計: {len(model_names)} モデル")
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"モデル一覧の取得中にエラーが発生しました: {e}")
+
+
 if __name__ == "__main__":
     bot.run(DISCORD_TOKEN)
