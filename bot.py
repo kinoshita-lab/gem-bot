@@ -124,6 +124,11 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
+    # Check if the message is a command (starts with prefix)
+    if message.content.startswith(bot.command_prefix):
+        await bot.process_commands(message)
+        return
+
     # Check if the message is in a Gemini-enabled channel
     if gemini_channel_ids and message.channel.id in gemini_channel_ids:
         # Auto-respond to all messages in Gemini-enabled channels
@@ -133,10 +138,6 @@ async def on_message(message):
                 await send_response(message.channel, response_text)
             except Exception as e:
                 await message.channel.send(f"An error occurred: {e}")
-        return  # Don't process as command
-
-    # Process commands for other channels
-    await bot.process_commands(message)
 
 
 @bot.command(name="ask")
@@ -148,6 +149,17 @@ async def ask(ctx, *, prompt):
             await send_response(ctx.channel, response_text)
         except Exception as e:
             await ctx.send(f"An error occurred: {e}")
+
+
+@bot.command(name="info")
+async def info(ctx):
+    """Displays information about the bot."""
+    embed = discord.Embed(
+        title="Bot Information",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="Model", value=GEMINI_MODEL, inline=False)
+    await ctx.send(embed=embed)
 
 
 if __name__ == "__main__":
