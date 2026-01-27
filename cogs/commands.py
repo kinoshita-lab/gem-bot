@@ -1,4 +1,5 @@
 import io
+from datetime import datetime
 
 import discord
 from discord.ext import commands
@@ -7,6 +8,9 @@ from google.genai import types
 
 class Commands(commands.Cog):
     """All bot commands."""
+
+    # Recommended models shown at the top of the list
+    RECOMMENDED_MODELS = ["gemini-flash-latest", "gemini-3-pro-preview"]
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -64,10 +68,22 @@ class Commands(commands.Cog):
                 # Sort model names
                 model_names.sort()
 
-                # Split into chunks if too many models
+                # Separate recommended models from the rest
+                recommended = [m for m in self.RECOMMENDED_MODELS if m in model_names]
+                other_models = [m for m in model_names if m not in recommended]
+
+                # Add recommended models field
+                if recommended:
+                    embed.add_field(
+                        name=self.t("model_list_recommended"),
+                        value="\n".join(f"• {name}" for name in recommended),
+                        inline=False,
+                    )
+
+                # Split other models into chunks if too many
                 chunk_size = 20
-                for i in range(0, len(model_names), chunk_size):
-                    chunk = model_names[i : i + chunk_size]
+                for i in range(0, len(other_models), chunk_size):
+                    chunk = other_models[i : i + chunk_size]
                     field_name = (
                         self.t("model_list_field")
                         if i == 0
@@ -112,12 +128,19 @@ class Commands(commands.Cog):
                 # Sort model names
                 model_names.sort()
 
+                # Separate recommended models from the rest
+                recommended = [m for m in self.RECOMMENDED_MODELS if m in model_names]
+                other_models = [m for m in model_names if m not in recommended]
+
+                # Create ordered list: recommended first, then others
+                ordered_models = recommended + other_models
+
                 current_model = self.bot.get_model(channel_id)
 
                 # Register pending selection (overwrites any previous selection for this user)
                 self.bot.pending_model_selections[user_id] = {
                     "channel_id": channel_id,
-                    "models": model_names,
+                    "models": ordered_models,
                 }
 
                 # Send selection prompt
@@ -127,10 +150,22 @@ class Commands(commands.Cog):
                     color=discord.Color.blue(),
                 )
 
-                # Split into chunks if too many models
+                # Add recommended models field
+                if recommended:
+                    field_value = "\n".join(
+                        f"`{j + 1}`. {name}" for j, name in enumerate(recommended)
+                    )
+                    embed.add_field(
+                        name=self.t("model_list_recommended"),
+                        value=field_value,
+                        inline=False,
+                    )
+
+                # Split other models into chunks if too many
                 chunk_size = 25
-                for i in range(0, len(model_names), chunk_size):
-                    chunk = model_names[i : i + chunk_size]
+                offset = len(recommended)
+                for i in range(0, len(other_models), chunk_size):
+                    chunk = other_models[i : i + chunk_size]
                     field_name = (
                         self.t("model_list_field")
                         if i == 0
@@ -139,7 +174,8 @@ class Commands(commands.Cog):
                         )
                     )
                     field_value = "\n".join(
-                        f"`{i + j + 1}`. {name}" for j, name in enumerate(chunk)
+                        f"`{offset + i + j + 1}`. {name}"
+                        for j, name in enumerate(chunk)
                     )
                     embed.add_field(name=field_name, value=field_value, inline=False)
 
@@ -189,6 +225,76 @@ class Commands(commands.Cog):
             await ctx.send(self.t("history_cleared"))
         except Exception as e:
             await ctx.send(self.t("history_error", error=e))
+
+    @history.command(name="export")
+    async def history_export(self, ctx: commands.Context, filename: str | None = None):
+        """Export conversation history to Markdown file."""
+        channel_id = ctx.channel.id
+
+        try:
+            # Load conversation data
+            data = self.bot.history_manager.load_conversation(channel_id)
+
+            if not data or not data.get("messages"):
+                await ctx.send(self.t("history_export_empty"))
+                return
+
+            # Get branch name
+            branch = self.bot.history_manager.get_current_branch(channel_id)
+
+            # Generate filename if not provided
+            if filename is None:
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                filename = f"{channel_id}_{branch}_{timestamp}"
+
+            # Build Markdown content
+            md_content = self._build_export_markdown(data, channel_id, branch)
+
+            # Create discord.File
+            file = discord.File(
+                io.BytesIO(md_content.encode("utf-8")),
+                filename=f"{filename}.md",
+            )
+
+            await ctx.send(self.t("history_export_success"), file=file)
+        except Exception as e:
+            await ctx.send(self.t("history_error", error=e))
+
+    def _build_export_markdown(self, data: dict, channel_id: int, branch: str) -> str:
+        """Build Markdown content from conversation data."""
+        lines = [
+            "# Conversation Export",
+            "",
+            f"- **Channel ID**: {channel_id}",
+            f"- **Branch**: {branch}",
+            f"- **Model**: {data.get('model', 'N/A')}",
+            f"- **Exported at**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "",
+            "---",
+            "",
+            "## Conversation",
+            "",
+        ]
+
+        for msg in data.get("messages", []):
+            role = msg.get("role", "unknown").capitalize()
+            content = msg.get("content", "")
+            timestamp = msg.get("timestamp", "")
+
+            # Format timestamp if available
+            if timestamp:
+                try:
+                    dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                    timestamp = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    pass
+
+            lines.append(f"### {role} ({timestamp})")
+            lines.append("")
+            lines.append(content)
+            lines.append("")
+
+        return "\n".join(lines)
 
     @commands.group(name="branch")
     async def branch(self, ctx: commands.Context):
