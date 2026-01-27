@@ -274,6 +274,8 @@ uv run python bot.py
 | `!prompt show` | Show current system prompt |
 | `!prompt set <content>` | Set system prompt |
 | `!prompt clear` | Clear system prompt |
+| `!prompt download` | Download system prompt as file |
+| Upload `GEMINI.md` | Upload file to set system prompt |
 
 ### Generation Config
 
@@ -338,6 +340,8 @@ Available parameters:
 | `!prompt show` | 現在のシステムプロンプトを表示 |
 | `!prompt set <内容>` | システムプロンプトを設定 |
 | `!prompt clear` | システムプロンプトを削除 |
+| `!prompt download` | システムプロンプトをファイルでダウンロード |
+| `GEMINI.md` をアップロード | ファイルをアップロードしてプロンプトを設定 |
 
 ### 生成設定
 
@@ -422,6 +426,15 @@ Each channel can have its own system prompt. You can set it via Discord commands
 !prompt clear
 ```
 
+### Download / Upload
+
+You can also download and upload system prompts as files:
+
+- **Download**: Use `!prompt download` to download the current system prompt as `GEMINI.md`
+- **Upload**: Simply upload a file named `GEMINI.md` to the channel, and the bot will automatically update the system prompt
+
+This is useful for editing long prompts in your favorite text editor.
+
 System prompts are stored in `history/{channel_id}/GEMINI.md`.
 
 ## システムプロンプト
@@ -433,6 +446,15 @@ System prompts are stored in `history/{channel_id}/GEMINI.md`.
 !prompt show
 !prompt clear
 ```
+
+### ダウンロード / アップロード
+
+システムプロンプトはファイルとしてダウンロード・アップロードすることもできます:
+
+- **ダウンロード**: `!prompt download` で現在のシステムプロンプトを `GEMINI.md` としてダウンロード
+- **アップロード**: `GEMINI.md` という名前のファイルをチャンネルにアップロードすると、ボットが自動的にシステムプロンプトを更新
+
+長いプロンプトをお気に入りのテキストエディタで編集したい場合に便利です。
 
 システムプロンプトは`history/{channel_id}/GEMINI.md`に保存されます。
 

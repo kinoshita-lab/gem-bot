@@ -501,6 +501,28 @@ class Commands(commands.Cog):
         except Exception as e:
             await ctx.send(self.t("prompt_error", error=e))
 
+    @prompt.command(name="download")
+    async def prompt_download(self, ctx: commands.Context):
+        """Download the current system prompt as a file."""
+        channel_id = ctx.channel.id
+
+        try:
+            content = self.bot.history_manager.load_system_prompt(channel_id)
+
+            if not content.strip():
+                await ctx.send(self.t("prompt_download_empty"))
+                return
+
+            # Create discord.File from content
+            file = discord.File(
+                io.BytesIO(content.encode("utf-8")),
+                filename="GEMINI.md",
+            )
+
+            await ctx.send(self.t("prompt_download_success"), file=file)
+        except Exception as e:
+            await ctx.send(self.t("prompt_error", error=e))
+
     @commands.command(name="image")
     async def image(self, ctx: commands.Context, *, prompt: str | None = None):
         """Generate an image from a text prompt."""
