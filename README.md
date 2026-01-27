@@ -557,7 +557,149 @@ gemini_discord/
 └── .env                # Environment variables (git-ignored)
 ```
 
-## プロジェクト構造
+---
+
+## Running as a systemd Service
+
+To run the bot as a background service on Linux, create a systemd unit file.
+
+### 1. Create the service file
+
+```bash
+sudo nano /etc/systemd/system/gem-bot.service
+```
+
+Add the following content (adjust paths and user as needed):
+
+```ini
+[Unit]
+Description=Gemini Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=your_username
+WorkingDirectory=/path/to/gemini_discord
+ExecStart=/home/your_username/.local/bin/uv run python bot.py
+Restart=always
+RestartSec=10
+Environment=PATH=/home/your_username/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 2. Enable and start the service
+
+```bash
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Enable on boot
+sudo systemctl enable gem-bot
+
+# Start the service
+sudo systemctl start gem-bot
+
+# Check status
+sudo systemctl status gem-bot
+```
+
+### 3. View logs
+
+```bash
+# View recent logs
+sudo journalctl -u gem-bot -n 50
+
+# Follow logs in real-time
+sudo journalctl -u gem-bot -f
+```
+
+### 4. Manage the service
+
+```bash
+# Stop
+sudo systemctl stop gem-bot
+
+# Restart
+sudo systemctl restart gem-bot
+
+# Disable from boot
+sudo systemctl disable gem-bot
+```
+
+## systemd サービスとして実行
+
+Linux でバックグラウンドサービスとしてボットを実行するには、systemd ユニットファイルを作成します。
+
+### 1. サービスファイルの作成
+
+```bash
+sudo nano /etc/systemd/system/gem-bot.service
+```
+
+以下の内容を追加（パスとユーザー名は環境に合わせて変更）:
+
+```ini
+[Unit]
+Description=Gemini Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=your_username
+WorkingDirectory=/path/to/gemini_discord
+ExecStart=/home/your_username/.local/bin/uv run python bot.py
+Restart=always
+RestartSec=10
+Environment=PATH=/home/your_username/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 2. サービスの有効化と起動
+
+```bash
+# systemd をリロード
+sudo systemctl daemon-reload
+
+# 起動時に自動起動
+sudo systemctl enable gem-bot
+
+# サービスを開始
+sudo systemctl start gem-bot
+
+# 状態を確認
+sudo systemctl status gem-bot
+```
+
+### 3. ログの確認
+
+```bash
+# 最近のログを表示
+sudo journalctl -u gem-bot -n 50
+
+# リアルタイムでログを追跡
+sudo journalctl -u gem-bot -f
+```
+
+### 4. サービスの管理
+
+```bash
+# 停止
+sudo systemctl stop gem-bot
+
+# 再起動
+sudo systemctl restart gem-bot
+
+# 自動起動を無効化
+sudo systemctl disable gem-bot
+```
+
+---
+
+## Project Structure
 
 ```
 gemini_discord/
