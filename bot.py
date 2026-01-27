@@ -11,7 +11,15 @@ from i18n import I18nManager
 
 
 class LocalizedHelpCommand(commands.DefaultHelpCommand):
-    """Custom help command with i18n support."""
+    """Custom help command with i18n support and grouped display."""
+
+    # Command groups for organized help display
+    COMMAND_GROUPS = {
+        "general": ["help", "info", "lang"],
+        "conversation": ["model", "prompt", "config"],
+        "history": ["history", "branch"],
+        "tools": ["image"],
+    }
 
     def t(self, key: str, **kwargs) -> str:
         """Shortcut for translation."""
@@ -32,28 +40,42 @@ class LocalizedHelpCommand(commands.DefaultHelpCommand):
         )
 
     async def send_bot_help(self, mapping):
-        """Send help for all commands."""
+        """Send help for all commands with organized groups."""
         embed = discord.Embed(
-            title=self.t("help_category_commands"),
+            title=self.t("help_title"),
             description=self.t("help_bot_description"),
             color=discord.Color.blue(),
         )
 
+        # Collect all commands
+        all_commands = {}
         for cog, cmds in mapping.items():
             filtered = await self.filter_commands(cmds, sort=True)
-            if filtered:
-                command_list = []
-                for cmd in filtered:
-                    # Get localized description
-                    desc = self._get_localized_command_help(cmd)
-                    command_list.append(
-                        f"`{self.context.clean_prefix}{cmd.name}` - {desc}"
-                    )
+            for cmd in filtered:
+                all_commands[cmd.name] = cmd
 
-                cog_name = cog.qualified_name if cog else self.t("help_no_category")
+        # Display commands by group
+        for group_key, cmd_names in self.COMMAND_GROUPS.items():
+            group_commands = []
+            for cmd_name in cmd_names:
+                if cmd_name in all_commands:
+                    cmd = all_commands[cmd_name]
+                    desc = self._get_localized_command_help(cmd)
+                    prefix = self.context.clean_prefix
+                    # Show subcommands for group commands
+                    if isinstance(cmd, commands.Group):
+                        subcmds = " | ".join([f"{sub.name}" for sub in cmd.commands])
+                        group_commands.append(
+                            f"`{prefix}{cmd.name}` - {desc}\n  └ {subcmds}"
+                        )
+                    else:
+                        group_commands.append(f"`{prefix}{cmd.name}` - {desc}")
+
+            if group_commands:
+                group_title = self.t(f"help_group_{group_key}")
                 embed.add_field(
-                    name=cog_name,
-                    value="\n".join(command_list),
+                    name=f"**{group_title}**",
+                    value="\n".join(group_commands),
                     inline=False,
                 )
 
