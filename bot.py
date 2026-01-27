@@ -337,6 +337,16 @@ async def on_ready():
 
 
 @bot.event
+async def on_command_error(ctx, error):
+    """Handle command errors."""
+    if isinstance(error, commands.CommandNotFound):
+        await ctx.send(bot.i18n.t("command_not_found", command=ctx.invoked_with))
+    else:
+        # Re-raise other errors to see them in console
+        raise error
+
+
+@bot.event
 async def on_message(message):
     """Handle incoming messages."""
     # Ignore messages from the bot itself

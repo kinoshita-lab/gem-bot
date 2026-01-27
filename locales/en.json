@@ -66,6 +66,7 @@
   "model_select_changed": "Model changed to **{model}**.",
   "model_select_invalid_number": "Invalid number. Enter a number between 1 and {max}.\nType `cancel` to cancel.",
   "model_select_prompt": "Enter a number or `cancel`.",
+  "command_not_found": "Command `{command}` not found. Use `!help` to see available commands.",
   "error_occurred": "An error occurred: {error}",
   "no_response": "No response from Gemini.",
   "lang_current": "Current language: **{lang}**",
