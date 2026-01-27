@@ -335,6 +335,15 @@ async def on_ready():
     print(f"We have logged in as {bot.user}")
     print(f"Responding to messages in channels: {enabled_channel_ids}")
 
+    # Send online message to all enabled channels
+    for channel_id in enabled_channel_ids:
+        channel = bot.get_channel(channel_id)
+        if channel:
+            try:
+                await channel.send(bot.i18n.t("bot_online"))
+            except Exception as e:
+                print(f"Failed to send online message to channel {channel_id}: {e}")
+
 
 @bot.event
 async def on_command_error(ctx, error):

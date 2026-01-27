@@ -1,4 +1,5 @@
 {
+  "bot_online": "gem-bot がオンラインになりました。`!help` で使用方法を表示します。",
   "bot_info_title": "ボット情報",
   "model": "モデル",
   "branch": "ブランチ",

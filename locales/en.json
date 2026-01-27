@@ -1,4 +1,5 @@
 {
+  "bot_online": "gem-bot is now online. Use `!help` to see available commands.",
   "bot_info_title": "Bot Information",
   "model": "Model",
   "branch": "Branch",
