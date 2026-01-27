@@ -1,5 +1,8 @@
+import io
+
 import discord
 from discord.ext import commands
+from google.genai import types
 
 
 class Commands(commands.Cog):
@@ -391,6 +394,66 @@ class Commands(commands.Cog):
             await ctx.send(self.t("prompt_clear_success"))
         except Exception as e:
             await ctx.send(self.t("prompt_error", error=e))
+
+    @commands.command(name="image")
+    async def image(self, ctx: commands.Context, *, prompt: str | None = None):
+        """Generate an image from a text prompt."""
+        if prompt is None:
+            await ctx.send(self.t("image_usage"))
+            return
+
+        async with ctx.typing():
+            try:
+                response = await self.bot.gemini_client.aio.models.generate_content(
+                    model="gemini-2.0-flash-exp-image-generation",
+                    config=types.GenerateContentConfig(
+                        response_modalities=["TEXT", "IMAGE"],
+                    ),
+                    contents=prompt,
+                )
+
+                if not response.candidates or not response.candidates[0].content:
+                    await ctx.send(self.t("image_no_response"))
+                    return
+
+                text_response = None
+                image_data = None
+                image_mime = None
+
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, "text") and part.text:
+                        text_response = part.text
+                    if hasattr(part, "inline_data") and part.inline_data:
+                        image_data = part.inline_data.data
+                        image_mime = part.inline_data.mime_type
+
+                if image_data:
+                    # Determine file extension from mime type
+                    ext = "png"
+                    if image_mime:
+                        if "jpeg" in image_mime or "jpg" in image_mime:
+                            ext = "jpg"
+                        elif "webp" in image_mime:
+                            ext = "webp"
+
+                    # Create discord.File from image data
+                    file = discord.File(
+                        io.BytesIO(image_data), filename=f"generated_image.{ext}"
+                    )
+
+                    # Send with optional text description
+                    if text_response:
+                        await ctx.send(text_response, file=file)
+                    else:
+                        await ctx.send(file=file)
+                elif text_response:
+                    # Model returned only text (e.g., explaining why it can't generate)
+                    await ctx.send(text_response)
+                else:
+                    await ctx.send(self.t("image_no_response"))
+
+            except Exception as e:
+                await ctx.send(self.t("image_error", error=e))
 
 
 async def setup(bot: commands.Bot):
