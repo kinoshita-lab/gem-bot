@@ -614,3 +614,110 @@ class HistoryManager:
 
         config["channels"][channel_key]["model"] = model
         self._save_global_config(config)
+
+    # Valid generation config keys and their types/validators
+    GENERATION_CONFIG_SCHEMA: dict[str, dict[str, Any]] = {
+        "temperature": {"type": float, "min": 0.0, "max": 2.0},
+        "top_p": {"type": float, "min": 0.0, "max": 1.0},
+        "top_k": {"type": int, "min": 1, "max": 100},
+        "max_output_tokens": {"type": int, "min": 1, "max": 65536},
+        "presence_penalty": {"type": float, "min": -2.0, "max": 2.0},
+        "frequency_penalty": {"type": float, "min": -2.0, "max": 2.0},
+    }
+
+    def load_generation_config(self, channel_id: int) -> dict[str, Any]:
+        """Load generation config from global config file.
+
+        Args:
+            channel_id: Discord channel ID.
+
+        Returns:
+            Generation config dictionary (empty if not configured).
+        """
+        config = self._load_global_config()
+        channels = config.get("channels", {})
+        channel_config = channels.get(str(channel_id), {})
+        return channel_config.get("generation_config", {})
+
+    def save_generation_config_value(
+        self, channel_id: int, key: str, value: Any
+    ) -> None:
+        """Save a single generation config value.
+
+        Args:
+            channel_id: Discord channel ID.
+            key: Config key name.
+            value: Config value.
+
+        Raises:
+            ValueError: If key is invalid or value is out of range.
+        """
+        if key not in self.GENERATION_CONFIG_SCHEMA:
+            valid_keys = ", ".join(self.GENERATION_CONFIG_SCHEMA.keys())
+            raise ValueError(f"無効なキー: {key}。有効なキー: {valid_keys}")
+
+        schema = self.GENERATION_CONFIG_SCHEMA[key]
+        expected_type = schema["type"]
+
+        # Type conversion
+        try:
+            if expected_type == float:
+                value = float(value)
+            elif expected_type == int:
+                value = int(value)
+        except (ValueError, TypeError):
+            raise ValueError(
+                f"{key} は {expected_type.__name__} 型である必要があります"
+            )
+
+        # Range validation
+        if "min" in schema and value < schema["min"]:
+            raise ValueError(f"{key} は {schema['min']} 以上である必要があります")
+        if "max" in schema and value > schema["max"]:
+            raise ValueError(f"{key} は {schema['max']} 以下である必要があります")
+
+        config = self._load_global_config()
+
+        if "channels" not in config:
+            config["channels"] = {}
+
+        channel_key = str(channel_id)
+        if channel_key not in config["channels"]:
+            config["channels"][channel_key] = {}
+
+        if "generation_config" not in config["channels"][channel_key]:
+            config["channels"][channel_key]["generation_config"] = {}
+
+        config["channels"][channel_key]["generation_config"][key] = value
+        self._save_global_config(config)
+
+    def reset_generation_config(self, channel_id: int, key: str | None = None) -> None:
+        """Reset generation config to default.
+
+        Args:
+            channel_id: Discord channel ID.
+            key: Specific key to reset, or None to reset all.
+        """
+        config = self._load_global_config()
+        channel_key = str(channel_id)
+
+        if "channels" not in config:
+            return
+        if channel_key not in config["channels"]:
+            return
+        if "generation_config" not in config["channels"][channel_key]:
+            return
+
+        if key is None:
+            # Reset all
+            del config["channels"][channel_key]["generation_config"]
+        else:
+            # Reset specific key
+            gen_config = config["channels"][channel_key]["generation_config"]
+            if key in gen_config:
+                del gen_config[key]
+            # Clean up empty dict
+            if not gen_config:
+                del config["channels"][channel_key]["generation_config"]
+
+        self._save_global_config(config)

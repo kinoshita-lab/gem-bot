@@ -455,6 +455,84 @@ class Commands(commands.Cog):
             except Exception as e:
                 await ctx.send(self.t("image_error", error=e))
 
+    @commands.group(name="config")
+    async def config(self, ctx: commands.Context):
+        """Generation config management commands."""
+        if ctx.invoked_subcommand is None:
+            await ctx.send(self.t("config_usage"))
+
+    @config.command(name="show")
+    async def config_show(self, ctx: commands.Context):
+        """Show current generation config."""
+        channel_id = ctx.channel.id
+
+        try:
+            gen_config = self.bot.history_manager.load_generation_config(channel_id)
+            schema = self.bot.history_manager.GENERATION_CONFIG_SCHEMA
+
+            embed = discord.Embed(
+                title=self.t("config_show_title"),
+                color=discord.Color.blue(),
+            )
+
+            for key, key_schema in schema.items():
+                if key in gen_config:
+                    value = gen_config[key]
+                    status = f"**{value}**"
+                else:
+                    status = self.t("config_default")
+
+                # Show range info
+                range_info = f"({key_schema['min']} - {key_schema['max']})"
+                embed.add_field(
+                    name=f"{key} {range_info}",
+                    value=status,
+                    inline=True,
+                )
+
+            await ctx.send(embed=embed)
+        except Exception as e:
+            await ctx.send(self.t("config_error", error=e))
+
+    @config.command(name="set")
+    async def config_set(
+        self, ctx: commands.Context, key: str | None = None, value: str | None = None
+    ):
+        """Set a generation config value."""
+        if key is None or value is None:
+            schema = self.bot.history_manager.GENERATION_CONFIG_SCHEMA
+            valid_keys = ", ".join(schema.keys())
+            await ctx.send(self.t("config_set_usage", valid_keys=valid_keys))
+            return
+
+        channel_id = ctx.channel.id
+
+        try:
+            self.bot.history_manager.save_generation_config_value(
+                channel_id, key, value
+            )
+            await ctx.send(
+                self.t("config_set_success", config_key=key, config_value=value)
+            )
+        except ValueError as e:
+            await ctx.send(self.t("config_error", error=e))
+        except Exception as e:
+            await ctx.send(self.t("config_error", error=e))
+
+    @config.command(name="reset")
+    async def config_reset(self, ctx: commands.Context, key: str | None = None):
+        """Reset generation config to default."""
+        channel_id = ctx.channel.id
+
+        try:
+            self.bot.history_manager.reset_generation_config(channel_id, key)
+            if key:
+                await ctx.send(self.t("config_reset_key", config_key=key))
+            else:
+                await ctx.send(self.t("config_reset_all"))
+        except Exception as e:
+            await ctx.send(self.t("config_error", error=e))
+
 
 async def setup(bot: commands.Bot):
     """Load the Commands cog."""

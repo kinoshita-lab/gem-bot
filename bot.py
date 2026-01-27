@@ -167,7 +167,7 @@ class GeminiBot(commands.Bot):
         )
 
         # Default model (used when a channel doesn't have a specific model set)
-        self.default_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.default_model: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 
         # Pending model selections: user_id -> {channel_id, models}
         self.pending_model_selections: dict[int, dict] = {}
@@ -285,12 +285,20 @@ class GeminiBot(commands.Bot):
             system_prompt = self.history_manager.load_system_prompt(channel_id)
             model = self.get_model(channel_id)
 
+            # Load generation config
+            gen_config = self.history_manager.load_generation_config(channel_id)
+
+            # Build config with user settings
+            config_params = {
+                "system_instruction": system_prompt,
+                "tools": [types.Tool(google_search=types.GoogleSearch())],
+            }
+            # Apply user-configured generation parameters
+            config_params.update(gen_config)
+
             response = await self.gemini_client.aio.models.generate_content(
                 model=model,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    tools=[types.Tool(google_search=types.GoogleSearch())],
-                ),
+                config=types.GenerateContentConfig(**config_params),
                 contents=self.conversation_history[channel_id],
             )
             response_text = response.text or ""
