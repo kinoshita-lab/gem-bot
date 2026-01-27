@@ -12,6 +12,8 @@
   "prompt_set_success": "System prompt has been set.",
   "prompt_clear_success": "System prompt has been cleared.",
   "prompt_error": "Error: {error}",
+  "prompt_updated_from_file": "System prompt updated from uploaded GEMINI.md file.",
+  "prompt_file_decode_error": "Error: Could not decode GEMINI.md file. Please ensure it is UTF-8 encoded.",
   "image_usage": "Usage: `!image <prompt>`\nExample: `!image a cute cat`",
   "image_no_response": "Failed to generate an image.",
   "image_error": "Image generation error: {error}",

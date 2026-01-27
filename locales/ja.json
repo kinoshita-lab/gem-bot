@@ -12,6 +12,8 @@
   "prompt_set_success": "システムプロンプトを設定しました。",
   "prompt_clear_success": "システムプロンプトを削除しました。",
   "prompt_error": "エラー: {error}",
+  "prompt_updated_from_file": "アップロードされた GEMINI.md からシステムプロンプトを更新しました。",
+  "prompt_file_decode_error": "エラー: GEMINI.md ファイルをデコードできませんでした。UTF-8 エンコーディングであることを確認してください。",
   "image_usage": "使用方法: `!image <プロンプト>`\n例: `!image 可愛い猫の絵を描いて`",
   "image_no_response": "画像を生成できませんでした。",
   "image_error": "画像生成エラー: {error}",

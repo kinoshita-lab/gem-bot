@@ -384,6 +384,25 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
+    # Check for GEMINI.md file upload (works in any channel)
+    for attachment in message.attachments:
+        if attachment.filename == "GEMINI.md":
+            try:
+                # Download and decode the file content
+                content = await attachment.read()
+                text = content.decode("utf-8")
+
+                # Update system prompt
+                channel_id = message.channel.id
+                bot.history_manager.save_system_prompt(channel_id, text)
+
+                await message.channel.send(bot.i18n.t("prompt_updated_from_file"))
+            except UnicodeDecodeError:
+                await message.channel.send(bot.i18n.t("prompt_file_decode_error"))
+            except Exception as e:
+                await message.channel.send(bot.i18n.t("prompt_error", error=str(e)))
+            return  # Don't process the message further
+
     user_id = message.author.id
 
     # Check if this user has a pending model selection
