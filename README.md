@@ -8,34 +8,118 @@ Discord上でGemini APIを使用してAIと会話できるボットです。
 
 ## Features
 
+- **Git-powered conversation branching** - Branch, merge, and fork conversations just like code.
 - **Channel-based conversation** - Responds to all messages in specified channels
 - **Model switching** - Change Gemini models at runtime with recommended models shown first
 - **Image generation** - Generate images from text prompts using Gemini
-- **Conversation history** - Git-based persistent history with branch/merge support
+- **Persistent history** - Conversation history is stored in Git repositories, surviving restarts and enabling version control
 - **Channel-specific system prompts** - Customize AI behavior per channel via Discord commands
 - **Generation config** - Customize temperature, top_p, and other parameters per channel
+- **Export to Markdown** - Export conversation history as Markdown files for documentation or sharing
 - **i18n support** - Multi-language support (Japanese/English by default, extensible)
 
 ## 機能
 
+- **Git による会話の分岐** - コードのように会話をブランチ、マージ、フォーク可能。
 - **チャンネルベースの会話** - 指定したチャンネルの全メッセージに応答
 - **モデル切り替え** - おすすめモデルを先頭に表示し、実行時に変更可能
 - **画像生成** - テキストプロンプトから画像を生成
-- **会話履歴** - Gitベースの永続化、ブランチ・マージ対応
+- **永続的な履歴** - 会話履歴は Git リポジトリに保存され、再起動後も保持、バージョン管理が可能
 - **チャンネル別システムプロンプト** - Discordコマンドでチャンネルごとにカスタマイズ
 - **生成設定** - temperature、top_p などのパラメータをチャンネルごとに設定
+- **Markdownエクスポート** - 会話履歴をMarkdownファイルとしてエクスポート、ドキュメント化や共有に便利
 - **多言語対応** - 日本語/英語（拡張可能）
+
+---
+
+## Prerequisites
+
+### Install uv (Package Manager)
+
+This project uses [uv](https://docs.astral.sh/uv/) as the package manager.
+
+**Windows (PowerShell):**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**macOS / Linux:**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Install Git
+
+Git is required for conversation history management.
+
+**Windows:**
+Download and install from [git-scm.com](https://git-scm.com/download/win)
+
+**macOS:**
+```bash
+xcode-select --install
+```
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt install git
+```
+
+After installation, configure your identity:
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+```
+
+### Get Gemini API Key
+
+1. Go to [Google AI Studio API Keys](https://aistudio.google.com/apikey)
+2. Sign in with your Google account
+3. Click "Create API Key"
+4. Copy the API key
+
+### Create Discord Bot
+
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click "New Application"
+3. Enter an application name
+   - **Important:** Do NOT use "gemini" in the bot name. Discord blocks bot names containing "gemini" as it's a reserved term.
+   - Use alternative names like "gem-bot", "ai-assistant", etc.
+4. Go to "Bot" in the left sidebar
+5. Click "Reset Token" and copy the bot token
+6. Enable these Privileged Gateway Intents:
+   - Message Content Intent (required for reading messages)
+7. Go to "OAuth2" > "URL Generator"
+8. Select scopes: `bot`
+9. Select bot permissions: `Send Messages`, `Read Message History`, `Attach Files`
+10. Copy the generated URL and open it to invite the bot to your server
 
 ---
 
 ## Setup
 
-### 1. Environment Variables
+### 1. Clone and Install
+
+```bash
+git clone <repository-url>
+cd gemini_discord
+uv sync
+```
+
+### 2. Configure Environment Variables
 
 Copy `.env.example` to `.env` and configure:
 
 ```bash
 cp .env.example .env
+```
+
+Edit `.env` with your credentials:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+DISCORD_BOT_TOKEN=your_discord_bot_token_here
+GEMINI_CHANNEL_ID=123456789012345678
 ```
 
 | Variable | Required | Description |
@@ -44,26 +128,104 @@ cp .env.example .env
 | `DISCORD_BOT_TOKEN` | Yes | Bot token from Discord Developer Portal |
 | `GEMINI_CHANNEL_ID` | Yes | Channel IDs for bot responses (comma-separated) |
 
-### 2. Install Dependencies
-
-```bash
-uv sync
-```
-
 ### 3. Start the Bot
 
 ```bash
 uv run python bot.py
 ```
 
+The bot will send a message to the configured channels when it comes online.
+
+---
+
+## 前提条件
+
+### uv（パッケージマネージャー）のインストール
+
+このプロジェクトはパッケージマネージャーとして [uv](https://docs.astral.sh/uv/) を使用しています。
+
+**Windows (PowerShell):**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**macOS / Linux:**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Git のインストール
+
+会話履歴の管理に Git が必要です。
+
+**Windows:**
+[git-scm.com](https://git-scm.com/download/win) からダウンロードしてインストール
+
+**macOS:**
+```bash
+xcode-select --install
+```
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt install git
+```
+
+インストール後、ユーザー情報を設定:
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+```
+
+### Gemini API キーの取得
+
+1. [Google AI Studio API Keys](https://aistudio.google.com/apikey) にアクセス
+2. Google アカウントでログイン
+3. 「Create API Key」をクリック
+4. API キーをコピー
+
+### Discord Bot の作成
+
+1. [Discord Developer Portal](https://discord.com/developers/applications) にアクセス
+2. 「New Application」をクリック
+3. アプリケーション名を入力
+   - **重要:** ボット名に「gemini」を含めないでください。Discordは「gemini」を予約語としてブロックします。
+   - 「gem-bot」「ai-assistant」などの代替名を使用してください。
+4. 左サイドバーの「Bot」に移動
+5. 「Reset Token」をクリックしてボットトークンをコピー
+6. 以下の Privileged Gateway Intents を有効化:
+   - Message Content Intent（メッセージ読み取りに必須）
+7. 「OAuth2」>「URL Generator」に移動
+8. スコープを選択: `bot`
+9. ボット権限を選択: `Send Messages`, `Read Message History`, `Attach Files`
+10. 生成された URL をコピーして開き、ボットをサーバーに招待
+
+---
+
 ## セットアップ
 
-### 1. 環境変数の設定
+### 1. クローンとインストール
+
+```bash
+git clone <repository-url>
+cd gemini_discord
+uv sync
+```
+
+### 2. 環境変数の設定
 
 `.env.example`を`.env`にコピーして設定:
 
 ```bash
 cp .env.example .env
+```
+
+`.env` を編集して認証情報を設定:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+DISCORD_BOT_TOKEN=your_discord_bot_token_here
+GEMINI_CHANNEL_ID=123456789012345678
 ```
 
 | 変数 | 必須 | 説明 |
@@ -72,17 +234,13 @@ cp .env.example .env
 | `DISCORD_BOT_TOKEN` | Yes | Discord Developer Portal の Bot トークン |
 | `GEMINI_CHANNEL_ID` | Yes | ボットが応答するチャンネルID（カンマ区切り） |
 
-### 2. 依存関係のインストール
-
-```bash
-uv sync
-```
-
 ### 3. ボットの起動
 
 ```bash
 uv run python bot.py
 ```
+
+ボットがオンラインになると、設定されたチャンネルにメッセージが送信されます。
 
 ---
 
