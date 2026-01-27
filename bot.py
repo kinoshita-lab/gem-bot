@@ -167,7 +167,7 @@ class GeminiBot(commands.Bot):
         )
 
         # Default model (used when a channel doesn't have a specific model set)
-        self.default_model: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+        self.default_model: str = "gemini-flash-latest"
 
         # Pending model selections: user_id -> {channel_id, models}
         self.pending_model_selections: dict[int, dict] = {}

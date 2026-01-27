@@ -1,115 +1,139 @@
 # AGENTS.md
 
-このファイルはAIコーディングエージェント向けのガイドラインです。
+This file contains guidelines for AI coding agents.
 
-## 重要なルール
+## Important Rules
 
-**明示的に指示があるまで、コミットすることを禁止します。ユーザーが動作を確認する必要があります。**
+**Do not commit unless explicitly instructed. The user needs to verify the changes first.**
 
-## プロジェクト概要
+## Project Overview
 
-Discord上でGemini APIを使用してAIと会話できるボットです。
+A Discord bot that enables AI conversations using the Gemini API.
 
-## 技術スタック
+## Tech Stack
 
 - Python 3.13+
-- discord.py (Discord Bot フレームワーク)
-- google-genai (Gemini API クライアント)
-- uv (パッケージマネージャー)
+- discord.py (Discord Bot framework)
+- google-genai (Gemini API client)
+- uv (Package manager)
 
-## プロジェクト構造
+## Project Structure
 
 ```
 gemini_discord/
-├── bot.py              # エントリーポイント、GeminiBotクラス、イベントハンドラ
+├── bot.py              # Entry point, GeminiBot class, event handlers
 ├── cogs/
 │   ├── __init__.py
-│   └── commands.py     # Discordコマンド (!ask, !info, !model)
-├── GEMINI.md           # Geminiのシステムプロンプト
-├── .env                # 環境変数 (git管理外)
-└── .env.example        # 環境変数のテンプレート
+│   └── commands.py     # Discord commands
+├── history_manager.py  # Git-based history management
+├── i18n.py             # Internationalization
+├── locales/
+│   ├── ja.json         # Japanese translations
+│   └── en.json         # English translations
+├── history/            # Conversation data (git-ignored)
+│   ├── config.json     # Global settings (language, per-channel model/config)
+│   └── {channel_id}/   # Per-channel Git repository
+│       ├── .git/
+│       ├── conversation.json
+│       └── GEMINI.md   # System prompt
+├── .env                # Environment variables (git-ignored)
+└── .env.example        # Environment variables template
 ```
 
-## アーキテクチャ
+## Architecture
 
-### GeminiBotクラス (bot.py)
+### GeminiBot Class (bot.py)
 
-`commands.Bot`を継承したカスタムクラス。以下の状態を保持：
+A custom class extending `commands.Bot`. It holds the following state:
 
-- `gemini_client`: Gemini APIクライアント
-- `default_model`: デフォルトのモデル名（チャンネル設定がない場合に使用）
-- `pending_model_selections`: モデル選択の対話状態
-- `conversation_history`: チャンネルごとの会話履歴
-- `history_manager`: Git管理された会話履歴・設定のマネージャー
+- `gemini_client`: Gemini API client
+- `default_model`: Default model name (used when no channel-specific setting exists)
+- `pending_model_selections`: Interactive model selection state
+- `conversation_history`: Per-channel conversation history
+- `history_manager`: Git-based history and settings manager
+- `i18n`: Internationalization manager
 
-モデル設定はチャンネルごとに `history/{channel_id}/config.json` で管理される。
+Model and generation config settings are managed per-channel in `history/config.json`.
 
 ### Cog (cogs/commands.py)
 
-discord.pyのCog機能を使用してコマンドを分離。新しいコマンドを追加する場合はこのファイルに追加する。
+Commands are separated using discord.py's Cog feature. Add new commands to this file.
 
-## コーディング規約
+## Coding Guidelines
 
-### 非同期処理
+### Async Processing
 
-- Gemini APIの呼び出しは必ず**非同期版** (`client.aio.models.xxx`) を使用する
-- 同期版を使用するとDiscordのハートビートがブロックされ、接続が切断される
+- Always use the **async version** of Gemini API calls (`client.aio.models.xxx`)
+- Using sync version blocks Discord's heartbeat and causes disconnection
 
 ```python
 # Good
 response = await self.gemini_client.aio.models.generate_content(...)
 
-# Bad - イベントループをブロックする
+# Bad - blocks the event loop
 response = self.gemini_client.models.generate_content(...)
 ```
 
-### コマンドの追加
+### Adding Commands
 
-新しいコマンドは `cogs/commands.py` の `Commands` クラスに追加する：
+Add new commands to the `Commands` class in `cogs/commands.py`:
 
 ```python
 @commands.command(name="newcommand")
 async def newcommand(self, ctx: commands.Context):
-    """コマンドの説明"""
-    # self.bot でGeminiBotインスタンスにアクセス可能
+    """Command description"""
+    # Access GeminiBot instance via self.bot
     pass
 ```
 
-### 共有状態へのアクセス
+### Accessing Shared State
 
-Cogからは `self.bot` を通じて共有状態にアクセスする：
+Access shared state from Cog via `self.bot`:
 
-- `self.bot.get_model(channel_id)`: チャンネルのモデルを取得
-- `self.bot.set_model(channel_id, model)`: チャンネルのモデルを設定
-- `self.bot.default_model`: デフォルトモデル
+- `self.bot.get_model(channel_id)`: Get model for channel
+- `self.bot.set_model(channel_id, model)`: Set model for channel
+- `self.bot.default_model`: Default model
 - `self.bot.gemini_client`
 - `self.bot.conversation_history`
 - `self.bot.pending_model_selections`
+- `self.bot.history_manager`
+- `self.bot.i18n`
 
-## 開発コマンド
+### Translation
 
-```bash
-# 依存関係のインストール
-uv sync
+Use `self.t(key, **kwargs)` in Cog for translated messages:
 
-# ボットの起動
-uv run python bot.py
-
-# 構文チェック
-python -m py_compile bot.py cogs/commands.py
+```python
+await ctx.send(self.t("some_message_key", param=value))
 ```
 
-## 環境変数
+Note: Avoid using `key` as a kwarg name since `t()` uses it as the first parameter.
 
-| 変数名 | 必須 | 説明 |
-|--------|------|------|
-| `DISCORD_BOT_TOKEN` | Yes | Discord Botトークン |
-| `GEMINI_API_KEY` | Yes | Gemini APIキー |
-| `GEMINI_MODEL` | No | デフォルトモデル (デフォルト: gemini-2.5-flash)。チャンネルごとの設定がない場合に使用される |
-| `GEMINI_CHANNEL_ID` | No | 自動応答チャンネルID (カンマ区切りで複数可) |
+## Development Commands
 
-## 注意事項
+```bash
+# Install dependencies
+uv sync
 
-- `.env` ファイルはgit管理外。APIキーやトークンをコミットしないこと
-- Discord メッセージは2000文字制限があるため、`send_response`で自動分割される
-- 会話履歴はメモリ上に保持され、ボット再起動でリセットされる
+# Start the bot
+uv run python bot.py
+
+# Syntax check
+python -m py_compile bot.py cogs/commands.py history_manager.py i18n.py
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DISCORD_BOT_TOKEN` | Yes | Discord Bot token |
+| `GEMINI_API_KEY` | Yes | Gemini API key |
+| `GEMINI_CHANNEL_ID` | Yes | Auto-response channel IDs (comma-separated) |
+
+## Notes
+
+- `.env` file is git-ignored. Never commit API keys or tokens.
+- Discord messages have a 2000 character limit. `send_response` handles automatic splitting.
+- Conversation history is persisted via Git in `history/{channel_id}/`.
+- Each channel has its own Git repository for branch/merge support.
+- Global settings (language, per-channel model/config) are stored in `history/config.json`.
