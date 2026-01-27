@@ -20,10 +20,10 @@ A Discord bot that enables AI conversations using the Gemini API.
 ## Project Structure
 
 ```
-gemini_discord/
+gem-bot/                # Repository root
 ├── bot.py              # Entry point, GeminiBot class, event handlers
 ├── cogs/
-│   ├── __init__.py
+│   ├── __init__.py     # Cog package marker
 │   └── commands.py     # Discord commands
 ├── history_manager.py  # Git-based history management
 ├── i18n.py             # Internationalization

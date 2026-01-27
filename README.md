@@ -561,9 +561,10 @@ Global settings are stored in `history/config.json`:
 ## Project Structure
 
 ```
-gemini_discord/
+gem-bot/                # Repository root
 ├── bot.py              # Main entry point
 ├── cogs/
+│   ├── __init__.py     # Cog package marker
 │   └── commands.py     # Discord commands
 ├── history_manager.py  # Git-based history management
 ├── i18n.py             # Internationalization
@@ -721,23 +722,6 @@ sudo systemctl disable gem-bot
 
 ---
 
-## Project Structure
+## プロジェクト構造
 
-```
-gemini_discord/
-├── bot.py              # エントリーポイント
-├── cogs/
-│   └── commands.py     # コマンド定義
-├── history_manager.py  # 履歴管理
-├── i18n.py             # 多言語対応
-├── locales/
-│   ├── ja.json         # 日本語
-│   └── en.json         # 英語
-├── history/            # 会話データ（git管理外）
-│   ├── config.json     # グローバル設定
-│   └── {channel_id}/   # チャンネル別データ
-│       ├── .git/       # Gitリポジトリ
-│       ├── conversation.json  # 会話履歴
-│       └── GEMINI.md   # システムプロンプト
-└── .env                # 環境変数（git管理外）
-```
+上記の [Project Structure](#project-structure) セクションを参照してください。
