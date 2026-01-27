@@ -17,7 +17,7 @@ class I18nManager:
     from the locales directory.
     """
 
-    DEFAULT_LANGUAGE = "ja"
+    DEFAULT_LANGUAGE = "en"
 
     def __init__(self, config_dir: str = "history", locales_dir: str = "locales"):
         """Initialize the I18nManager.
