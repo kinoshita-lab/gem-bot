@@ -12,11 +12,14 @@ Discord上でGemini APIを使用してAIと会話できるボットです。
 - **Channel-based conversation** - Responds to all messages in specified channels
 - **Model switching** - Change Gemini models at runtime with recommended models shown first
 - **Image generation** - Generate images from text prompts using Gemini
+- **Image analysis** - Upload images with messages for AI analysis
 - **Persistent history** - Conversation history is stored in Git repositories, surviving restarts and enabling version control
 - **Channel-specific system prompts** - Customize AI behavior per channel via Discord commands
 - **Generation config** - Customize temperature, top_p, and other parameters per channel
-- **Export to Markdown** - Export conversation history as Markdown files for documentation or sharing
+- **Export to Markdown** - Export conversation history as Markdown files with images as ZIP
 - **i18n support** - Multi-language support (Japanese/English by default, extensible)
+- **Google Calendar integration** - Manage calendar events through natural language
+- **Google Tasks integration** - Manage TODO lists through natural language
 
 ## 機能
 
@@ -24,11 +27,14 @@ Discord上でGemini APIを使用してAIと会話できるボットです。
 - **チャンネルベースの会話** - 指定したチャンネルの全メッセージに応答
 - **モデル切り替え** - おすすめモデルを先頭に表示し、実行時に変更可能
 - **画像生成** - テキストプロンプトから画像を生成
+- **画像分析** - メッセージと一緒に画像をアップロードしてAI分析
 - **永続的な履歴** - 会話履歴は Git リポジトリに保存され、再起動後も保持、バージョン管理が可能
 - **チャンネル別システムプロンプト** - Discordコマンドでチャンネルごとにカスタマイズ
 - **生成設定** - temperature、top_p などのパラメータをチャンネルごとに設定
-- **Markdownエクスポート** - 会話履歴をMarkdownファイルとしてエクスポート、ドキュメント化や共有に便利
+- **Markdownエクスポート** - 会話履歴をMarkdownファイルと画像をZIPでエクスポート
 - **多言語対応** - 日本語/英語（拡張可能）
+- **Googleカレンダー連携** - 自然言語でカレンダーイベントを管理
+- **Google Tasks連携** - 自然言語でTODOリストを管理
 
 ---
 
@@ -102,7 +108,7 @@ git config --global user.email "your.email@example.com"
 
 ```bash
 git clone <repository-url>
-cd gemini_discord
+cd gem-bot
 uv sync
 ```
 
@@ -208,7 +214,7 @@ git config --global user.email "your.email@example.com"
 
 ```bash
 git clone <repository-url>
-cd gemini_discord
+cd gem-bot
 uv sync
 ```
 
@@ -273,6 +279,7 @@ uv run python bot.py
 |---------|-------------|
 | `!prompt show` | Show current system prompt |
 | `!prompt set <content>` | Set system prompt |
+| `!prompt append <content>` | Append to existing system prompt |
 | `!prompt clear` | Clear system prompt |
 | `!prompt download` | Download system prompt as file |
 | Upload `GEMINI.md` | Upload file to set system prompt |
@@ -297,8 +304,10 @@ Available parameters:
 
 | Command | Description |
 |---------|-------------|
+| `!history list [start] [count]` | List history with numbered messages |
+| `!history delete <number>` | Delete a specific message by number |
 | `!history clear` | Clear all conversation history |
-| `!history export [filename]` | Export history as Markdown |
+| `!history export [filename]` | Export history as Markdown (ZIP with images) |
 
 ### Branch Management
 
@@ -309,6 +318,22 @@ Available parameters:
 | `!branch switch <name>` | Switch to a branch |
 | `!branch merge <name>` | Merge a branch into current |
 | `!branch delete <name>` | Delete a branch |
+
+### Tool Mode
+
+| Command | Description |
+|---------|-------------|
+| `!mode default` | Switch to default mode (Google Search) |
+| `!mode calendar` | Switch to calendar mode (Google Calendar) |
+| `!mode todo` | Switch to todo mode (Google Tasks) |
+
+### Google Integration
+
+| Command | Description |
+|---------|-------------|
+| `!google link` | Link your Google account |
+| `!google unlink` | Unlink your Google account |
+| `!google status` | Check Google connection status |
 
 ## コマンド
 
@@ -339,6 +364,7 @@ Available parameters:
 |---------|------|
 | `!prompt show` | 現在のシステムプロンプトを表示 |
 | `!prompt set <内容>` | システムプロンプトを設定 |
+| `!prompt append <内容>` | 既存のシステムプロンプトに追記 |
 | `!prompt clear` | システムプロンプトを削除 |
 | `!prompt download` | システムプロンプトをファイルでダウンロード |
 | `GEMINI.md` をアップロード | ファイルをアップロードしてプロンプトを設定 |
@@ -363,8 +389,10 @@ Available parameters:
 
 | コマンド | 説明 |
 |---------|------|
+| `!history list [開始] [件数]` | 履歴を番号付きで一覧表示 |
+| `!history delete <番号>` | 指定した番号のメッセージを削除 |
 | `!history clear` | 会話履歴を全て削除 |
-| `!history export [ファイル名]` | 履歴をMarkdownでエクスポート |
+| `!history export [ファイル名]` | 履歴をMarkdownでエクスポート（画像はZIP） |
 
 ### ブランチ管理
 
@@ -375,6 +403,22 @@ Available parameters:
 | `!branch switch <名前>` | 指定したブランチに切り替え |
 | `!branch merge <名前>` | ブランチをマージ |
 | `!branch delete <名前>` | ブランチを削除 |
+
+### ツールモード
+
+| コマンド | 説明 |
+|---------|------|
+| `!mode default` | デフォルトモード（Google検索） |
+| `!mode calendar` | カレンダーモード（Googleカレンダー） |
+| `!mode todo` | TODOモード（Google Tasks） |
+
+### Google連携
+
+| コマンド | 説明 |
+|---------|------|
+| `!google link` | Googleアカウントを連携 |
+| `!google unlink` | Googleアカウントの連携を解除 |
+| `!google status` | Google連携状態を確認 |
 
 ---
 
@@ -480,6 +524,90 @@ Conversation history is persisted per channel using Git in the `history/` direct
 
 ---
 
+## Google Integration (Calendar / Tasks)
+
+The bot supports Google Calendar and Google Tasks integration through natural language.
+
+### Setup Google Integration
+
+1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable the Google Calendar API and Google Tasks API
+3. Create OAuth 2.0 credentials (Desktop application)
+4. Download the credentials file and save it as `credentials.json` in the project root
+5. Use `!google link` to link your Google account
+
+### Using Calendar Mode
+
+```
+!mode calendar
+```
+
+In calendar mode, you can ask the bot to:
+- List upcoming events
+- Create new events
+- Update existing events
+- Delete events
+
+Example: "What do I have scheduled for tomorrow?"
+
+### Using Todo Mode
+
+```
+!mode todo
+```
+
+In todo mode, you can ask the bot to:
+- List your task lists
+- List tasks in a specific list
+- Create new tasks
+- Mark tasks as complete
+- Delete tasks
+
+Example: "Add 'Buy groceries' to my shopping list"
+
+## Google連携（カレンダー / Tasks）
+
+ボットは自然言語でGoogleカレンダーとGoogle Tasksを操作できます。
+
+### Google連携のセットアップ
+
+1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成
+2. Google Calendar API と Google Tasks API を有効化
+3. OAuth 2.0認証情報を作成（デスクトップアプリケーション）
+4. 認証情報ファイルをダウンロードし、プロジェクトルートに `credentials.json` として保存
+5. `!google link` でGoogleアカウントを連携
+
+### カレンダーモードの使用
+
+```
+!mode calendar
+```
+
+カレンダーモードでは以下が可能:
+- 予定の一覧表示
+- 新しい予定の作成
+- 既存の予定の更新
+- 予定の削除
+
+例: 「明日の予定を教えて」
+
+### TODOモードの使用
+
+```
+!mode todo
+```
+
+TODOモードでは以下が可能:
+- タスクリストの一覧表示
+- 特定のリストのタスク一覧
+- 新しいタスクの作成
+- タスクの完了マーク
+- タスクの削除
+
+例: 「買い物リストに『牛乳を買う』を追加して」
+
+---
+
 ## i18n
 
 The bot supports multiple languages. Default languages are Japanese (`ja`) and English (`en`).
@@ -561,24 +689,34 @@ Global settings are stored in `history/config.json`:
 ## Project Structure
 
 ```
-gem-bot/                # Repository root
-├── bot.py              # Main entry point
+gem-bot/                    # Repository root
+├── bot.py                  # Main entry point, GeminiBot class
 ├── cogs/
-│   ├── __init__.py     # Cog package marker
-│   └── commands.py     # Discord commands
-├── history_manager.py  # Git-based history management
-├── i18n.py             # Internationalization
+│   ├── __init__.py         # Cog package marker
+│   └── commands.py         # Discord commands
+├── history_manager.py      # Git-based history management
+├── i18n.py                 # Internationalization
+├── calendar_manager.py     # Google Calendar/Tasks OAuth & API
+├── calendar_tools.py       # Gemini Calendar function declarations
+├── tasks_tools.py          # Gemini Tasks function declarations
 ├── locales/
-│   ├── ja.json         # Japanese translations
-│   └── en.json         # English translations
-├── history/            # Conversation data (git-ignored)
-│   ├── config.json     # Global settings
-│   └── {channel_id}/   # Per-channel data
-│       ├── .git/       # Git repository
+│   ├── ja.json             # Japanese translations
+│   └── en.json             # English translations
+├── history/                # Conversation data (git-ignored)
+│   ├── config.json         # Global settings
+│   ├── tokens/             # Google OAuth tokens (git-ignored)
+│   └── {channel_id}/       # Per-channel data
+│       ├── .git/           # Git repository
 │       ├── conversation.json  # Conversation history
-│       └── GEMINI.md   # System prompt
-└── .env                # Environment variables (git-ignored)
+│       ├── GEMINI.md       # System prompt
+│       └── files/          # Image attachments
+├── credentials.json        # Google OAuth credentials (git-ignored)
+└── .env                    # Environment variables (git-ignored)
 ```
+
+## プロジェクト構造
+
+上記の [Project Structure](#project-structure) セクションを参照してください。
 
 ---
 
@@ -602,7 +740,7 @@ After=network.target
 [Service]
 Type=simple
 User=your_username
-WorkingDirectory=/path/to/gemini_discord
+WorkingDirectory=/path/to/gem-bot
 ExecStart=/home/your_username/.local/bin/uv run python bot.py
 Restart=always
 RestartSec=10
@@ -671,7 +809,7 @@ After=network.target
 [Service]
 Type=simple
 User=your_username
-WorkingDirectory=/path/to/gemini_discord
+WorkingDirectory=/path/to/gem-bot
 ExecStart=/home/your_username/.local/bin/uv run python bot.py
 Restart=always
 RestartSec=10
@@ -719,9 +857,3 @@ sudo systemctl restart gem-bot
 # 自動起動を無効化
 sudo systemctl disable gem-bot
 ```
-
----
-
-## プロジェクト構造
-
-上記の [Project Structure](#project-structure) セクションを参照してください。
