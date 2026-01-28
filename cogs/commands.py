@@ -1,4 +1,5 @@
 import io
+import zipfile
 from datetime import datetime
 
 import discord
@@ -381,7 +382,7 @@ class Commands(commands.Cog):
 
     @history.command(name="export")
     async def history_export(self, ctx: commands.Context, filename: str | None = None):
-        """Export conversation history to Markdown file."""
+        """Export conversation history to ZIP file with Markdown and images."""
         channel_id = ctx.channel.id
 
         try:
@@ -400,14 +401,39 @@ class Commands(commands.Cog):
                 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
                 filename = f"{channel_id}_{branch}_{timestamp}"
 
-            # Build Markdown content
-            md_content = self._build_export_markdown(data, channel_id, branch)
-
-            # Create discord.File
-            file = discord.File(
-                io.BytesIO(md_content.encode("utf-8")),
-                filename=f"{filename}.md",
+            # Check if there are any images in the conversation
+            has_images = any(
+                "images" in msg and msg["images"]
+                for msg in data.get("messages", [])
             )
+
+            if has_images:
+                # Create ZIP file with Markdown and images
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                    # Add Markdown file
+                    md_content = self._build_export_markdown(data, channel_id, branch)
+                    zf.writestr("conversation.md", md_content.encode("utf-8"))
+
+                    # Add image files
+                    for msg in data.get("messages", []):
+                        if "images" in msg:
+                            for image_path in msg["images"]:
+                                image_data = self.bot.history_manager.load_image(
+                                    channel_id, image_path
+                                )
+                                if image_data:
+                                    zf.writestr(image_path, image_data[0])
+
+                zip_buffer.seek(0)
+                file = discord.File(zip_buffer, filename=f"{filename}.zip")
+            else:
+                # No images, just send Markdown file
+                md_content = self._build_export_markdown(data, channel_id, branch)
+                file = discord.File(
+                    io.BytesIO(md_content.encode("utf-8")),
+                    filename=f"{filename}.md",
+                )
 
             await ctx.send(self.t("history_export_success"), file=file)
         except Exception as e:
@@ -444,6 +470,13 @@ class Commands(commands.Cog):
 
             lines.append(f"### {role} ({timestamp})")
             lines.append("")
+
+            # Add images if present
+            if "images" in msg:
+                for image_path in msg["images"]:
+                    lines.append(f"![image]({image_path})")
+                    lines.append("")
+
             lines.append(content)
             lines.append("")
 

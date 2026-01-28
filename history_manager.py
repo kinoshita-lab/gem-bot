@@ -51,6 +51,95 @@ class HistoryManager:
         """
         return self._get_repo_path(channel_id) / "conversation.json"
 
+    def _get_files_dir(self, channel_id: int) -> Path:
+        """Get the files directory path for a channel.
+
+        Args:
+            channel_id: Discord channel ID.
+
+        Returns:
+            Path to the files directory.
+        """
+        return self._get_repo_path(channel_id) / "files"
+
+    # MIME type to file extension mapping
+    MIME_TO_EXT: dict[str, str] = {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+    }
+
+    # File extension to MIME type mapping
+    EXT_TO_MIME: dict[str, str] = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }
+
+    def save_image(self, channel_id: int, image_data: bytes, mime_type: str) -> str:
+        """Save image to files directory and return relative path.
+
+        Args:
+            channel_id: Discord channel ID.
+            image_data: Raw image bytes.
+            mime_type: MIME type (e.g., "image/png").
+
+        Returns:
+            Relative path like "files/img_20240128_123456_001.png"
+        """
+        self._ensure_repo(channel_id)
+        files_dir = self._get_files_dir(channel_id)
+        files_dir.mkdir(parents=True, exist_ok=True)
+
+        # Determine file extension
+        ext = self.MIME_TO_EXT.get(mime_type, ".bin")
+
+        # Generate unique filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_name = f"img_{timestamp}"
+
+        # Find unique filename with counter
+        counter = 1
+        while True:
+            filename = f"{base_name}_{counter:03d}{ext}"
+            file_path = files_dir / filename
+            if not file_path.exists():
+                break
+            counter += 1
+
+        # Write image data
+        file_path.write_bytes(image_data)
+
+        # Return relative path (from repo root)
+        return f"files/{filename}"
+
+    def load_image(self, channel_id: int, relative_path: str) -> tuple[bytes, str] | None:
+        """Load image from files directory.
+
+        Args:
+            channel_id: Discord channel ID.
+            relative_path: Relative path like "files/img_xxx.png"
+
+        Returns:
+            Tuple of (image_data, mime_type) or None if not found.
+        """
+        repo_path = self._get_repo_path(channel_id)
+        file_path = repo_path / relative_path
+
+        if not file_path.exists():
+            return None
+
+        # Determine MIME type from extension
+        ext = file_path.suffix.lower()
+        mime_type = self.EXT_TO_MIME.get(ext, "application/octet-stream")
+
+        # Read and return image data
+        image_data = file_path.read_bytes()
+        return (image_data, mime_type)
+
     def _ensure_repo(self, channel_id: int) -> Path:
         """Ensure the channel's Git repository exists.
 
@@ -417,11 +506,14 @@ class HistoryManager:
                     )
         return commits
 
-    def convert_to_serializable(self, history: list) -> list[dict[str, Any]]:
+    def convert_to_serializable(
+        self, history: list, channel_id: int | None = None
+    ) -> list[dict[str, Any]]:
         """Convert Gemini Content objects to serializable dicts.
 
         Args:
             history: List of Gemini Content objects.
+            channel_id: Discord channel ID (required if history contains images).
 
         Returns:
             List of serializable message dicts.
@@ -429,19 +521,33 @@ class HistoryManager:
         messages = []
         for content in history:
             role = content.role
-            # Extract text from parts
+            # Extract text and images from parts
             text_parts = []
+            image_paths = []
+
             for part in content.parts:
                 if hasattr(part, "text") and part.text:
                     text_parts.append(part.text)
+                elif hasattr(part, "inline_data") and part.inline_data:
+                    # Save image and record path
+                    if channel_id is not None:
+                        path = self.save_image(
+                            channel_id,
+                            part.inline_data.data,
+                            part.inline_data.mime_type,
+                        )
+                        image_paths.append(path)
 
-            messages.append(
-                {
-                    "role": role,
-                    "content": "\n".join(text_parts),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                }
-            )
+            msg: dict[str, Any] = {
+                "role": role,
+                "content": "\n".join(text_parts),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            if image_paths:
+                msg["images"] = image_paths
+
+            messages.append(msg)
         return messages
 
     def convert_from_serializable(

@@ -220,12 +220,24 @@ class GeminiBot(commands.Bot):
             # Convert saved messages back to Gemini Content format
             history = []
             for msg in messages:
-                history.append(
-                    types.Content(
-                        role=msg["role"],
-                        parts=[types.Part.from_text(text=msg["content"])],
-                    )
-                )
+                parts = []
+
+                # Load images first if present
+                if "images" in msg:
+                    for image_path in msg["images"]:
+                        image_data = self.history_manager.load_image(
+                            channel_id, image_path
+                        )
+                        if image_data:
+                            data, mime_type = image_data
+                            parts.append(
+                                types.Part.from_bytes(data=data, mime_type=mime_type)
+                            )
+
+                # Add text content
+                parts.append(types.Part.from_text(text=msg["content"]))
+
+                history.append(types.Content(role=msg["role"], parts=parts))
             self.conversation_history[channel_id] = history
         print(f"Loaded conversation history for {len(saved_conversations)} channels")
 
@@ -235,7 +247,7 @@ class GeminiBot(commands.Bot):
             return
 
         history = self.conversation_history[channel_id]
-        messages = self.history_manager.convert_to_serializable(history)
+        messages = self.history_manager.convert_to_serializable(history, channel_id)
         model = self.get_model(channel_id)
         self.history_manager.save_conversation(
             channel_id=channel_id,
@@ -253,12 +265,24 @@ class GeminiBot(commands.Bot):
         if data and "messages" in data:
             history = []
             for msg in data["messages"]:
-                history.append(
-                    types.Content(
-                        role=msg["role"],
-                        parts=[types.Part.from_text(text=msg["content"])],
-                    )
-                )
+                parts = []
+
+                # Load images first if present
+                if "images" in msg:
+                    for image_path in msg["images"]:
+                        image_data = self.history_manager.load_image(
+                            channel_id, image_path
+                        )
+                        if image_data:
+                            img_bytes, mime_type = image_data
+                            parts.append(
+                                types.Part.from_bytes(data=img_bytes, mime_type=mime_type)
+                            )
+
+                # Add text content
+                parts.append(types.Part.from_text(text=msg["content"]))
+
+                history.append(types.Content(role=msg["role"], parts=parts))
             self.conversation_history[channel_id] = history
         else:
             self.conversation_history[channel_id] = []
@@ -294,16 +318,39 @@ class GeminiBot(commands.Bot):
                 response_text if response_text else "No response from Gemini."
             )
 
-    async def ask_gemini(self, channel_id: int, prompt: str) -> str:
-        """Send a prompt to Gemini and return the response."""
+    async def ask_gemini(
+        self, channel_id: int, prompt: str, images: list[tuple[bytes, str]] | None = None
+    ) -> str:
+        """Send a prompt to Gemini and return the response.
+
+        Args:
+            channel_id: Discord channel ID.
+            prompt: Text prompt from user.
+            images: Optional list of (image_data, mime_type) tuples.
+
+        Returns:
+            Response text from Gemini.
+        """
         # Initialize conversation history for this channel if not exists
         if channel_id not in self.conversation_history:
             self.conversation_history[channel_id] = []
 
-        # Add user's message to history
-        self.conversation_history[channel_id].append(
-            types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
-        )
+        # Build parts for the user message
+        parts = []
+
+        # Add images first if provided
+        if images:
+            for image_data, mime_type in images:
+                parts.append(
+                    types.Part.from_bytes(data=image_data, mime_type=mime_type)
+                )
+
+        # Add text prompt
+        parts.append(types.Part.from_text(text=prompt))
+
+        # Add user's message to history (for API call)
+        user_content = types.Content(role="user", parts=parts)
+        self.conversation_history[channel_id].append(user_content)
 
         try:
             # Load channel-specific system prompt
@@ -335,7 +382,7 @@ class GeminiBot(commands.Bot):
                 )
             )
 
-            # Save to disk with Git commit
+            # Save to disk with Git commit (images are saved to files/ directory)
             self._save_history_to_disk(channel_id)
 
             return response_text
@@ -481,8 +528,26 @@ async def on_message(message):
         # Auto-respond to all messages in Gemini-enabled channels
         async with message.channel.typing():
             try:
+                # Check for image attachments
+                images = []
+                supported_types = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+
+                for attachment in message.attachments:
+                    # Check if it's an image by content_type
+                    if attachment.content_type and attachment.content_type in supported_types:
+                        try:
+                            image_data = await attachment.read()
+                            images.append((image_data, attachment.content_type))
+                        except Exception as e:
+                            print(f"Failed to download image {attachment.filename}: {e}")
+
+                # Use message content or default prompt if only images
+                prompt = message.content if message.content else "この画像について説明してください。"
+
                 response_text = await bot.ask_gemini(
-                    message.channel.id, message.content
+                    message.channel.id,
+                    prompt,
+                    images=images if images else None
                 )
                 await bot.send_response(message.channel, response_text)
             except Exception as e:
