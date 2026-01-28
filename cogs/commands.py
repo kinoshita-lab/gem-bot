@@ -32,11 +32,22 @@ class Commands(commands.Cog):
         embed.add_field(name=self.t("branch"), value=branch or "N/A", inline=False)
         await ctx.send(embed=embed)
 
+    async def _handle_invalid_subcommand(
+        self, ctx: commands.Context, usage_key: str
+    ) -> None:
+        """Handle invalid or missing subcommand."""
+        # Check if a subcommand was attempted (message has more than just the command)
+        args = ctx.message.content.lstrip(ctx.prefix or "!").split()[1:]
+        if args:
+            # Invalid subcommand was specified
+            await ctx.send(self.t("subcommand_not_found", subcommand=args[0]))
+        await ctx.send(self.t(usage_key))
+
     @commands.group(name="model")
     async def model(self, ctx: commands.Context):
         """Model management commands."""
         if ctx.invoked_subcommand is None:
-            await ctx.send(self.t("model_usage"))
+            await self._handle_invalid_subcommand(ctx, "model_usage")
 
     @model.command(name="list")
     async def model_list(self, ctx: commands.Context):
@@ -208,7 +219,7 @@ class Commands(commands.Cog):
     async def history(self, ctx: commands.Context):
         """Conversation history management commands."""
         if ctx.invoked_subcommand is None:
-            await ctx.send(self.t("history_usage"))
+            await self._handle_invalid_subcommand(ctx, "history_usage")
 
     @history.command(name="list")
     async def history_list(
@@ -442,7 +453,7 @@ class Commands(commands.Cog):
     async def branch(self, ctx: commands.Context):
         """Branch management commands."""
         if ctx.invoked_subcommand is None:
-            await ctx.send(self.t("branch_usage"))
+            await self._handle_invalid_subcommand(ctx, "branch_usage")
 
     @branch.command(name="create")
     async def branch_create(
@@ -585,7 +596,7 @@ class Commands(commands.Cog):
     async def prompt(self, ctx: commands.Context):
         """System prompt management commands."""
         if ctx.invoked_subcommand is None:
-            await ctx.send(self.t("prompt_usage"))
+            await self._handle_invalid_subcommand(ctx, "prompt_usage")
 
     @prompt.command(name="show")
     async def prompt_show(self, ctx: commands.Context):
@@ -750,7 +761,7 @@ class Commands(commands.Cog):
     async def config(self, ctx: commands.Context):
         """Generation config management commands."""
         if ctx.invoked_subcommand is None:
-            await ctx.send(self.t("config_usage"))
+            await self._handle_invalid_subcommand(ctx, "config_usage")
 
     @config.command(name="show")
     async def config_show(self, ctx: commands.Context):

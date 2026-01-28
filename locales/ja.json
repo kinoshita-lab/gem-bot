@@ -89,6 +89,7 @@
   "model_select_invalid_number": "無効な番号です。1 から {max} の数字を入力してください。\n`cancel` でキャンセルできます。",
   "model_select_prompt": "数字または `cancel` を入力してください。",
   "command_not_found": "コマンド `{command}` は存在しません。`!help` でコマンド一覧を確認してください。",
+  "subcommand_not_found": "サブコマンド `{subcommand}` は存在しません。",
   "error_occurred": "エラーが発生しました: {error}",
   "no_response": "Gemini からの応答がありません。",
   "lang_current": "現在の言語: **{lang}**",
