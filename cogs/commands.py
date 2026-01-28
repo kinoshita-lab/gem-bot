@@ -211,7 +211,9 @@ class Commands(commands.Cog):
             await ctx.send(self.t("history_usage"))
 
     @history.command(name="list")
-    async def history_list(self, ctx: commands.Context, count: int = 10):
+    async def history_list(
+        self, ctx: commands.Context, start: int | None = None, count: int = 10
+    ):
         """List conversation history with message numbers."""
         channel_id = ctx.channel.id
 
@@ -225,9 +227,18 @@ class Commands(commands.Cog):
             total = len(history)
             # Limit count to reasonable range
             count = max(1, min(count, 50))
-            # Show last N messages
-            start_index = max(0, total - count)
-            shown_messages = history[start_index:]
+
+            # Determine start index (1-based input, convert to 0-based)
+            if start is None:
+                # Default: show last N messages
+                start_index = max(0, total - count)
+            else:
+                # User specified start (1-based)
+                start_index = max(0, min(start - 1, total - 1))
+
+            # Calculate end index
+            end_index = min(start_index + count, total)
+            shown_messages = history[start_index:end_index]
 
             embed = discord.Embed(
                 title=self.t("history_list_title"),
