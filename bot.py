@@ -11,6 +11,7 @@ from history_manager import HistoryManager
 from i18n import I18nManager
 from calendar_manager import CalendarAuthManager
 from calendar_tools import get_calendar_tools, CalendarToolHandler
+from tasks_tools import get_tasks_tools, TasksToolHandler
 
 
 class LocalizedHelpCommand(commands.DefaultHelpCommand):
@@ -213,16 +214,18 @@ class GeminiBot(commands.Bot):
         # Calendar auth manager (optional, only if credentials.json exists)
         self.calendar_auth: CalendarAuthManager | None = None
         self.calendar_tool_handler: CalendarToolHandler | None = None
+        self.tasks_tool_handler: TasksToolHandler | None = None
         try:
             calendar_auth = CalendarAuthManager()
             if calendar_auth.is_credentials_configured():
                 self.calendar_auth = calendar_auth
                 self.calendar_tool_handler = CalendarToolHandler(calendar_auth)
-                print("Google Calendar integration enabled")
+                self.tasks_tool_handler = TasksToolHandler(calendar_auth)
+                print("Google Calendar/Tasks integration enabled")
             else:
-                print("Google Calendar integration disabled (credentials.json not found)")
+                print("Google Calendar/Tasks integration disabled (credentials.json not found)")
         except Exception as e:
-            print(f"Google Calendar integration disabled: {e}")
+            print(f"Google Calendar/Tasks integration disabled: {e}")
 
         # Tool mode per channel: channel_id -> mode name
         # Available modes: "default" (Google Search), "calendar"
@@ -413,9 +416,19 @@ class GeminiBot(commands.Bot):
 
             if tool_mode == "calendar" and self.calendar_tool_handler:
                 tools = get_calendar_tools()
+            elif tool_mode == "todo" and self.tasks_tool_handler:
+                tools = get_tasks_tools()
             else:
                 # Default: Google Search
                 tools = [types.Tool(google_search=types.GoogleSearch())]
+
+            # Enhance system prompt for specific tool modes
+            if tool_mode == "todo":
+                todo_instruction = "\n\n[TODO MODE] あなたはGoogle Tasksを使ってユーザーのタスクを管理するアシスタントです。ユーザーがタスク、TODO、やることリストについて質問したり、タスクの追加・完了・削除・一覧表示を依頼した場合は、必ず提供されたGoogle Tasks関数（list_tasks, create_task, complete_task, delete_task等）を使用してください。通常のテキスト応答ではなく、必ずツールを呼び出してください。"
+                system_prompt = (system_prompt + todo_instruction) if system_prompt else todo_instruction
+            elif tool_mode == "calendar":
+                calendar_instruction = "\n\n[CALENDAR MODE] あなたはGoogle Calendarを使ってユーザーの予定を管理するアシスタントです。ユーザーが予定、スケジュール、カレンダーについて質問したり、予定の追加・変更・削除・確認を依頼した場合は、必ず提供されたGoogle Calendar関数を使用してください。"
+                system_prompt = (system_prompt + calendar_instruction) if system_prompt else calendar_instruction
 
             # Build config with user settings
             config_params = {
@@ -431,8 +444,8 @@ class GeminiBot(commands.Bot):
                 contents=self.conversation_history[channel_id],
             )
 
-            # Process response (handle function calls if in calendar mode)
-            if tool_mode == "calendar":
+            # Process response (handle function calls if in calendar or todo mode)
+            if tool_mode in ("calendar", "todo"):
                 response_text = await self._process_response(
                     response, channel_id, model, config_params, user_id
                 )
@@ -560,6 +573,24 @@ class GeminiBot(commands.Bot):
                 return {"error": "User ID not available"}
 
             return await self.calendar_tool_handler.handle_function_call(
+                function_name, function_args, user_id
+            )
+
+        # Handle tasks functions
+        if function_name in (
+            "list_task_lists",
+            "list_tasks",
+            "create_task",
+            "update_task",
+            "complete_task",
+            "delete_task",
+        ):
+            if not self.tasks_tool_handler:
+                return {"error": "Tasks integration not configured"}
+            if not user_id:
+                return {"error": "User ID not available"}
+
+            return await self.tasks_tool_handler.handle_function_call(
                 function_name, function_args, user_id
             )
 

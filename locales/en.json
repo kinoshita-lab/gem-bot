@@ -149,7 +149,9 @@
   "mode_current": "Current Mode",
   "mode_available": "Available Modes",
   "mode_usage_title": "Usage",
-  "mode_usage": "`!mode default` - Switch to default mode (Google Search)\n`!mode calendar` - Switch to Calendar mode",
+  "mode_usage": "`!mode default` - Switch to default mode (Google Search)\n`!mode calendar` - Switch to Calendar mode\n`!mode todo` - Switch to Todo mode (Google Tasks)",
   "mode_changed": "Tool mode changed to `{mode}`.",
-  "mode_calendar_not_linked": "To use Calendar mode, please link your Google account first with `!calendar link`."
+  "mode_calendar_not_linked": "To use Calendar mode, please link your Google account first with `!calendar link`.",
+  "mode_todo_not_linked": "To use Todo mode, please link your Google account first with `!calendar link`.",
+  "help_command_todo": "Switch to Todo mode (Google Tasks)."
 }

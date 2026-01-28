@@ -149,7 +149,9 @@
   "mode_current": "現在のモード",
   "mode_available": "利用可能なモード",
   "mode_usage_title": "使用方法",
-  "mode_usage": "`!mode default` - デフォルトモード（Google検索）に切り替え\n`!mode calendar` - カレンダーモードに切り替え",
+  "mode_usage": "`!mode default` - デフォルトモード（Google検索）に切り替え\n`!mode calendar` - カレンダーモードに切り替え\n`!mode todo` - Todoモード（Google Tasks）に切り替え",
   "mode_changed": "ツールモードを `{mode}` に切り替えました。",
-  "mode_calendar_not_linked": "カレンダーモードを使用するには、先に `!calendar link` でGoogleアカウントを連携してください。"
+  "mode_calendar_not_linked": "カレンダーモードを使用するには、先に `!calendar link` でGoogleアカウントを連携してください。",
+  "mode_todo_not_linked": "Todoモードを使用するには、先に `!calendar link` でGoogleアカウントを連携してください。",
+  "help_command_todo": "Todoモード（Google Tasks）に切り替えます。"
 }

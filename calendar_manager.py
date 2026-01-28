@@ -20,10 +20,12 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# OAuth 2.0 scopes for Google Calendar
+# OAuth 2.0 scopes for Google Calendar and Tasks
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/tasks",
+    "https://www.googleapis.com/auth/tasks.readonly",
 ]
 
 # Default paths
@@ -712,6 +714,273 @@ class CalendarAuthManager:
             None,
             lambda: service.events()
             .delete(calendarId=calendar_id, eventId=event_id)
+            .execute(),
+        )
+
+        return True
+
+    # ==================== Google Tasks API Methods ====================
+
+    def _get_tasks_service(self, user_id: int):
+        """Get Google Tasks API service for a user.
+
+        Args:
+            user_id: Discord user ID.
+
+        Returns:
+            Google Tasks API service object.
+
+        Raises:
+            ValueError: If user is not authenticated.
+        """
+        creds = self.get_credentials(user_id)
+        if not creds:
+            raise ValueError("User is not authenticated")
+        return build("tasks", "v1", credentials=creds)
+
+    async def list_task_lists(
+        self,
+        user_id: int,
+        max_results: int = 10,
+    ) -> list[dict]:
+        """List task lists for a user.
+
+        Args:
+            user_id: Discord user ID.
+            max_results: Maximum number of task lists to return.
+
+        Returns:
+            List of task list dictionaries.
+        """
+        service = self._get_tasks_service(user_id)
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: service.tasklists()
+            .list(maxResults=max_results)
+            .execute(),
+        )
+
+        task_lists = result.get("items", [])
+        return [
+            {
+                "id": tl.get("id"),
+                "title": tl.get("title"),
+                "updated": tl.get("updated"),
+            }
+            for tl in task_lists
+        ]
+
+    async def list_tasks(
+        self,
+        user_id: int,
+        tasklist_id: str = "@default",
+        show_completed: bool = False,
+        show_hidden: bool = False,
+        max_results: int = 100,
+    ) -> list[dict]:
+        """List tasks from a task list.
+
+        Args:
+            user_id: Discord user ID.
+            tasklist_id: Task list ID (defaults to "@default" for primary list).
+            show_completed: Whether to show completed tasks.
+            show_hidden: Whether to show hidden tasks.
+            max_results: Maximum number of tasks to return.
+
+        Returns:
+            List of task dictionaries.
+        """
+        service = self._get_tasks_service(user_id)
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: service.tasks()
+            .list(
+                tasklist=tasklist_id,
+                showCompleted=show_completed,
+                showHidden=show_hidden,
+                maxResults=max_results,
+            )
+            .execute(),
+        )
+
+        tasks = result.get("items", [])
+        return [
+            {
+                "id": task.get("id"),
+                "title": task.get("title", ""),
+                "notes": task.get("notes", ""),
+                "due": task.get("due"),
+                "status": task.get("status"),  # "needsAction" or "completed"
+                "completed": task.get("completed"),
+                "parent": task.get("parent"),
+                "position": task.get("position"),
+            }
+            for task in tasks
+        ]
+
+    async def create_task(
+        self,
+        user_id: int,
+        title: str,
+        notes: str = "",
+        due: str | None = None,
+        tasklist_id: str = "@default",
+    ) -> dict:
+        """Create a new task.
+
+        Args:
+            user_id: Discord user ID.
+            title: Task title.
+            notes: Task notes/description (optional).
+            due: Due date in RFC 3339 format (optional).
+            tasklist_id: Task list ID (defaults to "@default").
+
+        Returns:
+            Created task dictionary.
+        """
+        service = self._get_tasks_service(user_id)
+
+        task_body = {
+            "title": title,
+            "notes": notes,
+        }
+        if due:
+            task_body["due"] = due
+
+        loop = asyncio.get_event_loop()
+        task = await loop.run_in_executor(
+            None,
+            lambda: service.tasks()
+            .insert(tasklist=tasklist_id, body=task_body)
+            .execute(),
+        )
+
+        return {
+            "id": task.get("id"),
+            "title": task.get("title"),
+            "notes": task.get("notes", ""),
+            "due": task.get("due"),
+            "status": task.get("status"),
+        }
+
+    async def update_task(
+        self,
+        user_id: int,
+        task_id: str,
+        title: str | None = None,
+        notes: str | None = None,
+        due: str | None = None,
+        status: str | None = None,
+        tasklist_id: str = "@default",
+    ) -> dict:
+        """Update an existing task.
+
+        Args:
+            user_id: Discord user ID.
+            task_id: ID of the task to update.
+            title: New task title (optional).
+            notes: New task notes (optional).
+            due: New due date in RFC 3339 format (optional).
+            status: New status ("needsAction" or "completed") (optional).
+            tasklist_id: Task list ID (defaults to "@default").
+
+        Returns:
+            Updated task dictionary.
+        """
+        service = self._get_tasks_service(user_id)
+
+        # First, get the existing task
+        loop = asyncio.get_event_loop()
+        task = await loop.run_in_executor(
+            None,
+            lambda: service.tasks()
+            .get(tasklist=tasklist_id, task=task_id)
+            .execute(),
+        )
+
+        # Update fields if provided
+        if title is not None:
+            task["title"] = title
+        if notes is not None:
+            task["notes"] = notes
+        if due is not None:
+            task["due"] = due
+        if status is not None:
+            task["status"] = status
+            # If marking as completed, remove 'completed' timestamp so API sets it
+            if status == "completed" and "completed" not in task:
+                pass  # API will set the completed timestamp
+            elif status == "needsAction":
+                # If unmarking as completed, remove the completed timestamp
+                task.pop("completed", None)
+
+        # Update the task
+        updated_task = await loop.run_in_executor(
+            None,
+            lambda: service.tasks()
+            .update(tasklist=tasklist_id, task=task_id, body=task)
+            .execute(),
+        )
+
+        return {
+            "id": updated_task.get("id"),
+            "title": updated_task.get("title"),
+            "notes": updated_task.get("notes", ""),
+            "due": updated_task.get("due"),
+            "status": updated_task.get("status"),
+            "completed": updated_task.get("completed"),
+        }
+
+    async def complete_task(
+        self,
+        user_id: int,
+        task_id: str,
+        tasklist_id: str = "@default",
+    ) -> dict:
+        """Mark a task as completed.
+
+        Args:
+            user_id: Discord user ID.
+            task_id: ID of the task to complete.
+            tasklist_id: Task list ID (defaults to "@default").
+
+        Returns:
+            Updated task dictionary.
+        """
+        return await self.update_task(
+            user_id=user_id,
+            task_id=task_id,
+            status="completed",
+            tasklist_id=tasklist_id,
+        )
+
+    async def delete_task(
+        self,
+        user_id: int,
+        task_id: str,
+        tasklist_id: str = "@default",
+    ) -> bool:
+        """Delete a task.
+
+        Args:
+            user_id: Discord user ID.
+            task_id: ID of the task to delete.
+            tasklist_id: Task list ID (defaults to "@default").
+
+        Returns:
+            True if deletion was successful.
+        """
+        service = self._get_tasks_service(user_id)
+
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: service.tasks()
+            .delete(tasklist=tasklist_id, task=task_id)
             .execute(),
         )
 

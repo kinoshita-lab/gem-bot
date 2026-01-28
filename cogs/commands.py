@@ -874,10 +874,11 @@ class Commands(commands.Cog):
     # ==================== Mode Commands ====================
 
     # Available tool modes
-    # Internal values: "default" (Google Search), "calendar"
+    # Internal values: "default" (Google Search), "calendar", "todo"
     TOOL_MODES = {
         "default": "Default - Google検索を使用",
         "calendar": "Calendar - Google Calendarを使用（要連携）",
+        "todo": "Todo - Google Tasksを使用（要連携）",
     }
 
     @commands.group(name="mode")
@@ -940,6 +941,26 @@ class Commands(commands.Cog):
 
         self.bot.set_tool_mode(channel_id, "calendar")
         await ctx.send(self.t("mode_changed", mode="calendar"))
+
+    @mode.command(name="todo")
+    async def mode_todo(self, ctx: commands.Context):
+        """Switch to Todo mode (Google Tasks)."""
+        channel_id = ctx.channel.id
+        user_id = ctx.author.id
+
+        # Check if calendar/tasks is configured (uses same credentials)
+        calendar_auth = self._get_calendar_auth()
+        if calendar_auth is None:
+            await self._send_calendar_setup_guide(ctx)
+            return
+
+        # Check if user is authenticated
+        if not calendar_auth.is_user_authenticated(user_id):
+            await ctx.send(self.t("mode_todo_not_linked"))
+            return
+
+        self.bot.set_tool_mode(channel_id, "todo")
+        await ctx.send(self.t("mode_changed", mode="todo"))
 
     # ==================== Calendar Commands ====================
 
