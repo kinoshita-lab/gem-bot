@@ -363,6 +363,93 @@ class GeminiBot(commands.Bot):
                 response_text if response_text else "No response from Gemini."
             )
 
+    # =========================================================================
+    # ask_gemini Helper Methods
+    # =========================================================================
+
+    def _build_user_content(
+        self,
+        prompt: str,
+        images: list[tuple[bytes, str]] | None = None,
+    ) -> types.Content:
+        """Build user content from prompt and optional images.
+
+        Args:
+            prompt: Text prompt from user.
+            images: Optional list of (image_data, mime_type) tuples.
+
+        Returns:
+            Content object for the user message.
+        """
+        parts = []
+
+        # Add images first if provided
+        if images:
+            for image_data, mime_type in images:
+                parts.append(
+                    types.Part.from_bytes(data=image_data, mime_type=mime_type)
+                )
+
+        # Add text prompt
+        parts.append(types.Part.from_text(text=prompt))
+
+        return types.Content(role="user", parts=parts)
+
+    def _get_tools_for_mode(self, channel_id: int) -> list:
+        """Get the appropriate tools based on channel's tool mode.
+
+        Args:
+            channel_id: Discord channel ID.
+
+        Returns:
+            List of Tool objects for the current mode.
+        """
+        tool_mode = self.get_tool_mode(channel_id)
+
+        if tool_mode == "calendar" and self.calendar_tool_handler:
+            return get_calendar_tools()
+        elif tool_mode == "todo" and self.tasks_tool_handler:
+            return get_tasks_tools()
+        else:
+            # Default: Google Search
+            return [types.Tool(google_search=types.GoogleSearch())]
+
+    # Mode-specific system prompt instructions
+    _MODE_INSTRUCTIONS = {
+        "todo": (
+            "\n\n[TODO MODE] あなたはGoogle Tasksを使ってユーザーのタスクを管理する"
+            "アシスタントです。ユーザーがタスク、TODO、やることリストについて質問したり、"
+            "タスクの追加・完了・削除・一覧表示を依頼した場合は、必ず提供された"
+            "Google Tasks関数（list_tasks, create_task, complete_task, delete_task等）を"
+            "使用してください。通常のテキスト応答ではなく、必ずツールを呼び出してください。"
+        ),
+        "calendar": (
+            "\n\n[CALENDAR MODE] あなたはGoogle Calendarを使ってユーザーの予定を管理する"
+            "アシスタントです。ユーザーが予定、スケジュール、カレンダーについて質問したり、"
+            "予定の追加・変更・削除・確認を依頼した場合は、必ず提供された"
+            "Google Calendar関数を使用してください。"
+        ),
+    }
+
+    def _build_system_prompt(self, channel_id: int) -> str:
+        """Build the system prompt with mode-specific instructions.
+
+        Args:
+            channel_id: Discord channel ID.
+
+        Returns:
+            Complete system prompt string.
+        """
+        base_prompt = self.history_manager.load_system_prompt(channel_id)
+        tool_mode = self.get_tool_mode(channel_id)
+
+        # Add mode-specific instruction if applicable
+        mode_instruction = self._MODE_INSTRUCTIONS.get(tool_mode, "")
+        if mode_instruction:
+            return (base_prompt + mode_instruction) if base_prompt else mode_instruction
+
+        return base_prompt
+
     async def ask_gemini(
         self,
         channel_id: int,
@@ -385,59 +472,20 @@ class GeminiBot(commands.Bot):
         if channel_id not in self.conversation_history:
             self.conversation_history[channel_id] = []
 
-        # Build parts for the user message
-        parts = []
-
-        # Add images first if provided
-        if images:
-            for image_data, mime_type in images:
-                parts.append(
-                    types.Part.from_bytes(data=image_data, mime_type=mime_type)
-                )
-
-        # Add text prompt
-        parts.append(types.Part.from_text(text=prompt))
-
-        # Add user's message to history (for API call)
-        user_content = types.Content(role="user", parts=parts)
+        # Build and add user message to history
+        user_content = self._build_user_content(prompt, images)
         self.conversation_history[channel_id].append(user_content)
 
         try:
-            # Load channel-specific system prompt
-            system_prompt = self.history_manager.load_system_prompt(channel_id)
+            # Build configuration
             model = self.get_model(channel_id)
-
-            # Load generation config
-            gen_config = self.history_manager.load_generation_config(channel_id)
-
-            # Build tools list based on channel's tool mode
-            # Note: Google Search and Function Calling cannot be used together
-            tool_mode = self.get_tool_mode(channel_id)
-
-            if tool_mode == "calendar" and self.calendar_tool_handler:
-                tools = get_calendar_tools()
-            elif tool_mode == "todo" and self.tasks_tool_handler:
-                tools = get_tasks_tools()
-            else:
-                # Default: Google Search
-                tools = [types.Tool(google_search=types.GoogleSearch())]
-
-            # Enhance system prompt for specific tool modes
-            if tool_mode == "todo":
-                todo_instruction = "\n\n[TODO MODE] あなたはGoogle Tasksを使ってユーザーのタスクを管理するアシスタントです。ユーザーがタスク、TODO、やることリストについて質問したり、タスクの追加・完了・削除・一覧表示を依頼した場合は、必ず提供されたGoogle Tasks関数（list_tasks, create_task, complete_task, delete_task等）を使用してください。通常のテキスト応答ではなく、必ずツールを呼び出してください。"
-                system_prompt = (system_prompt + todo_instruction) if system_prompt else todo_instruction
-            elif tool_mode == "calendar":
-                calendar_instruction = "\n\n[CALENDAR MODE] あなたはGoogle Calendarを使ってユーザーの予定を管理するアシスタントです。ユーザーが予定、スケジュール、カレンダーについて質問したり、予定の追加・変更・削除・確認を依頼した場合は、必ず提供されたGoogle Calendar関数を使用してください。"
-                system_prompt = (system_prompt + calendar_instruction) if system_prompt else calendar_instruction
-
-            # Build config with user settings
             config_params = {
-                "system_instruction": system_prompt,
-                "tools": tools,
+                "system_instruction": self._build_system_prompt(channel_id),
+                "tools": self._get_tools_for_mode(channel_id),
             }
-            # Apply user-configured generation parameters
-            config_params.update(gen_config)
+            config_params.update(self.history_manager.load_generation_config(channel_id))
 
+            # Call Gemini API
             response = await self.gemini_client.aio.models.generate_content(
                 model=model,
                 config=types.GenerateContentConfig(**config_params),
@@ -445,6 +493,7 @@ class GeminiBot(commands.Bot):
             )
 
             # Process response (handle function calls if in calendar or todo mode)
+            tool_mode = self.get_tool_mode(channel_id)
             if tool_mode in ("calendar", "todo"):
                 response_text = await self._process_response(
                     response, channel_id, model, config_params, user_id
@@ -459,7 +508,7 @@ class GeminiBot(commands.Bot):
                 )
             )
 
-            # Save to disk with Git commit (images are saved to files/ directory)
+            # Save to disk with Git commit
             self._save_history_to_disk(channel_id)
 
             return response_text
@@ -469,86 +518,79 @@ class GeminiBot(commands.Bot):
                 self.conversation_history[channel_id].pop()
             raise e
 
-    async def _process_response(
-        self,
-        response,
-        channel_id: int,
-        model: str,
-        config_params: dict,
-        user_id: int | None,
-    ) -> str:
-        """Process Gemini response, handling function calls if present.
+    # =========================================================================
+    # _process_response Helper Methods
+    # =========================================================================
+
+    # Function name to handler mapping
+    _CALENDAR_FUNCTIONS = frozenset({
+        "list_calendar_events",
+        "create_calendar_event",
+        "update_calendar_event",
+        "delete_calendar_event",
+    })
+
+    _TASKS_FUNCTIONS = frozenset({
+        "list_task_lists",
+        "list_tasks",
+        "create_task",
+        "update_task",
+        "complete_task",
+        "delete_task",
+    })
+
+    def _extract_function_calls(self, response) -> list:
+        """Extract function calls from Gemini response.
 
         Args:
             response: Gemini API response.
-            channel_id: Discord channel ID.
-            model: Model name.
-            config_params: Generation config parameters.
+
+        Returns:
+            List of function call objects, empty if none found.
+        """
+        # Early returns for invalid response structure
+        if not response.candidates:
+            return []
+
+        candidate = response.candidates[0]
+        if not candidate.content or not candidate.content.parts:
+            return []
+
+        # Collect function calls
+        return [
+            part.function_call
+            for part in candidate.content.parts
+            if hasattr(part, "function_call") and part.function_call
+        ]
+
+    async def _execute_function_calls(
+        self,
+        function_calls: list,
+        user_id: int | None,
+    ) -> list:
+        """Execute multiple function calls and return response parts.
+
+        Args:
+            function_calls: List of function call objects.
             user_id: Discord user ID.
 
         Returns:
-            Final response text.
+            List of function response Part objects.
         """
-        # Check if response has valid candidates
-        if not response.candidates:
-            return response.text or ""
-
-        candidate = response.candidates[0]
-
-        # Check if content exists
-        if not candidate.content:
-            return response.text or ""
-
-        # Check if parts exist
-        if not candidate.content.parts:
-            return response.text or ""
-
-        function_calls = []
-
-        # Collect all function calls from parts
-        for part in candidate.content.parts:
-            if hasattr(part, "function_call") and part.function_call:
-                function_calls.append(part.function_call)
-
-        # If no function calls, return text response
-        if not function_calls:
-            return response.text or ""
-
-        # Process function calls
-        function_responses = []
+        responses = []
         for fc in function_calls:
-            result = await self._execute_function_call(fc, user_id)
-            function_responses.append(
-                types.Part.from_function_response(
-                    name=fc.name,
-                    response=result,
-                )
+            result = await self._execute_single_function(fc, user_id)
+            responses.append(
+                types.Part.from_function_response(name=fc.name, response=result)
             )
+        return responses
 
-        # Add model's function call to history
-        self.conversation_history[channel_id].append(candidate.content)
-
-        # Add function responses to history
-        function_response_content = types.Content(
-            role="user",
-            parts=function_responses,
-        )
-        self.conversation_history[channel_id].append(function_response_content)
-
-        # Get final response from Gemini
-        final_response = await self.gemini_client.aio.models.generate_content(
-            model=model,
-            config=types.GenerateContentConfig(**config_params),
-            contents=self.conversation_history[channel_id],
-        )
-
-        # Recursively process in case of chained function calls
-        return await self._process_response(
-            final_response, channel_id, model, config_params, user_id
-        )
-
-    async def _execute_function_call(self, function_call, user_id: int | None) -> dict:
-        """Execute a function call and return the result.
+    async def _execute_single_function(
+        self,
+        function_call,
+        user_id: int | None,
+    ) -> dict:
+        """Execute a single function call and return the result.
 
         Args:
             function_call: Function call object from Gemini.
@@ -560,42 +602,141 @@ class GeminiBot(commands.Bot):
         function_name = function_call.name
         function_args = dict(function_call.args) if function_call.args else {}
 
-        # Handle calendar functions
-        if function_name in (
-            "list_calendar_events",
-            "create_calendar_event",
-            "update_calendar_event",
-            "delete_calendar_event",
-        ):
-            if not self.calendar_tool_handler:
-                return {"error": "Calendar integration not configured"}
-            if not user_id:
-                return {"error": "User ID not available"}
-
-            return await self.calendar_tool_handler.handle_function_call(
+        # Route to appropriate handler
+        if function_name in self._CALENDAR_FUNCTIONS:
+            return await self._handle_calendar_function(
                 function_name, function_args, user_id
             )
 
-        # Handle tasks functions
-        if function_name in (
-            "list_task_lists",
-            "list_tasks",
-            "create_task",
-            "update_task",
-            "complete_task",
-            "delete_task",
-        ):
-            if not self.tasks_tool_handler:
-                return {"error": "Tasks integration not configured"}
-            if not user_id:
-                return {"error": "User ID not available"}
-
-            return await self.tasks_tool_handler.handle_function_call(
+        if function_name in self._TASKS_FUNCTIONS:
+            return await self._handle_tasks_function(
                 function_name, function_args, user_id
             )
 
-        # Unknown function
         return {"error": f"Unknown function: {function_name}"}
+
+    async def _handle_calendar_function(
+        self,
+        function_name: str,
+        function_args: dict,
+        user_id: int | None,
+    ) -> dict:
+        """Handle calendar function calls.
+
+        Args:
+            function_name: Name of the calendar function.
+            function_args: Arguments for the function.
+            user_id: Discord user ID.
+
+        Returns:
+            Function result dictionary.
+        """
+        if not self.calendar_tool_handler:
+            return {"error": "Calendar integration not configured"}
+        if not user_id:
+            return {"error": "User ID not available"}
+
+        return await self.calendar_tool_handler.handle_function_call(
+            function_name, function_args, user_id
+        )
+
+    async def _handle_tasks_function(
+        self,
+        function_name: str,
+        function_args: dict,
+        user_id: int | None,
+    ) -> dict:
+        """Handle tasks function calls.
+
+        Args:
+            function_name: Name of the tasks function.
+            function_args: Arguments for the function.
+            user_id: Discord user ID.
+
+        Returns:
+            Function result dictionary.
+        """
+        if not self.tasks_tool_handler:
+            return {"error": "Tasks integration not configured"}
+        if not user_id:
+            return {"error": "User ID not available"}
+
+        return await self.tasks_tool_handler.handle_function_call(
+            function_name, function_args, user_id
+        )
+
+    def _update_history_with_function_calls(
+        self,
+        channel_id: int,
+        model_content,
+        function_responses: list,
+    ) -> None:
+        """Update conversation history with function call and responses.
+
+        Args:
+            channel_id: Discord channel ID.
+            model_content: Model's content containing function calls.
+            function_responses: List of function response Part objects.
+        """
+        # Add model's function call to history
+        self.conversation_history[channel_id].append(model_content)
+
+        # Add function responses to history
+        self.conversation_history[channel_id].append(
+            types.Content(role="user", parts=function_responses)
+        )
+
+    async def _process_response(
+        self,
+        response,
+        channel_id: int,
+        model: str,
+        config_params: dict,
+        user_id: int | None,
+    ) -> str:
+        """Process Gemini response, handling function calls if present.
+
+        Uses early return pattern for cleaner control flow.
+        Recursively processes chained function calls.
+
+        Args:
+            response: Gemini API response.
+            channel_id: Discord channel ID.
+            model: Model name.
+            config_params: Generation config parameters.
+            user_id: Discord user ID.
+
+        Returns:
+            Final response text.
+        """
+        # Extract function calls (empty list if none)
+        function_calls = self._extract_function_calls(response)
+
+        # No function calls - return text response
+        if not function_calls:
+            return response.text or ""
+
+        # Execute all function calls
+        function_responses = await self._execute_function_calls(function_calls, user_id)
+
+        # Update history with function calls and responses
+        self._update_history_with_function_calls(
+            channel_id,
+            response.candidates[0].content,
+            function_responses,
+        )
+
+        # Get follow-up response from Gemini
+        final_response = await self.gemini_client.aio.models.generate_content(
+            model=model,
+            config=types.GenerateContentConfig(**config_params),
+            contents=self.conversation_history[channel_id],
+        )
+
+        # Recursively process in case of chained function calls
+        return await self._process_response(
+            final_response, channel_id, model, config_params, user_id
+        )
 
 
 # Initialize Discord Bot
@@ -632,138 +773,196 @@ async def on_command_error(ctx, error):
         raise error
 
 
-@bot.event
-async def on_message(message):
-    """Handle incoming messages."""
-    # Ignore messages from the bot itself
-    if message.author == bot.user:
-        return
+# =============================================================================
+# Message Handler Helper Functions
+# =============================================================================
 
-    # Check for GEMINI.md file upload (works in any channel)
+
+async def _handle_gemini_md_upload(message) -> bool:
+    """Handle GEMINI.md file upload.
+
+    Args:
+        message: Discord message object.
+
+    Returns:
+        True if handled (should stop processing), False otherwise.
+    """
     for attachment in message.attachments:
         if attachment.filename == "GEMINI.md":
             try:
-                # Download and decode the file content
                 content = await attachment.read()
                 text = content.decode("utf-8")
-
-                # Update system prompt
                 channel_id = message.channel.id
                 bot.history_manager.save_system_prompt(channel_id, text)
-
                 await message.channel.send(bot.i18n.t("prompt_updated_from_file"))
             except UnicodeDecodeError:
                 await message.channel.send(bot.i18n.t("prompt_file_decode_error"))
             except Exception as e:
                 await message.channel.send(bot.i18n.t("prompt_error", error=str(e)))
-            return  # Don't process the message further
+            return True
+    return False
 
+
+async def _handle_model_selection(message) -> bool:
+    """Handle pending model selection interaction.
+
+    Args:
+        message: Discord message object.
+
+    Returns:
+        True if handled (should stop processing), False otherwise.
+    """
     user_id = message.author.id
+    if user_id not in bot.pending_model_selections:
+        return False
 
-    # Check if this user has a pending model selection
-    if user_id in bot.pending_model_selections:
-        content = message.content.strip().lower()
+    content = message.content.strip().lower()
 
-        # Handle cancel
-        if content == "cancel":
+    # Handle cancel
+    if content == "cancel":
+        del bot.pending_model_selections[user_id]
+        await message.channel.send(bot.i18n.t("model_select_cancelled"))
+        return True
+
+    # Handle number selection
+    if content.isdigit():
+        index = int(content) - 1
+        model_names = bot.pending_model_selections[user_id]["models"]
+        channel_id = bot.pending_model_selections[user_id]["channel_id"]
+
+        if 0 <= index < len(model_names):
+            selected_model = model_names[index]
+            bot.set_model(channel_id, selected_model)
             del bot.pending_model_selections[user_id]
-            await message.channel.send(bot.i18n.t("model_select_cancelled"))
-            return
+            await message.channel.send(
+                bot.i18n.t("model_select_changed", model=selected_model)
+            )
+        else:
+            await message.channel.send(
+                bot.i18n.t("model_select_invalid_number", max=len(model_names))
+            )
+        return True
 
-        # Handle number selection
-        if content.isdigit():
-            index = int(content) - 1
-            model_names = bot.pending_model_selections[user_id]["models"]
-            channel_id = bot.pending_model_selections[user_id]["channel_id"]
+    # Invalid input - prompt again
+    await message.channel.send(bot.i18n.t("model_select_prompt"))
+    return True
 
-            if 0 <= index < len(model_names):
-                selected_model = model_names[index]
-                bot.set_model(channel_id, selected_model)
-                del bot.pending_model_selections[user_id]
-                await message.channel.send(
-                    bot.i18n.t("model_select_changed", model=selected_model)
-                )
-                return
-            else:
-                await message.channel.send(
-                    bot.i18n.t("model_select_invalid_number", max=len(model_names))
-                )
-                return
 
-        # Invalid input - prompt again
-        await message.channel.send(bot.i18n.t("model_select_prompt"))
+async def _handle_delete_confirmation(message) -> bool:
+    """Handle pending delete confirmation interaction.
+
+    Args:
+        message: Discord message object.
+
+    Returns:
+        True if handled (should stop processing), False otherwise.
+    """
+    user_id = message.author.id
+    if user_id not in bot.pending_delete_confirmations:
+        return False
+
+    pending = bot.pending_delete_confirmations[user_id]
+    channel_id = pending["channel_id"]
+
+    # Only process if in the same channel
+    if message.channel.id != channel_id:
+        return False
+
+    content = message.content.strip().lower()
+    del bot.pending_delete_confirmations[user_id]
+
+    if content == "yes":
+        # Perform deletion
+        indices = sorted(pending["indices"], reverse=True)
+        history = bot.conversation_history.get(channel_id, [])
+
+        for idx in indices:
+            if 0 <= idx < len(history):
+                history.pop(idx)
+
+        # Save updated history
+        bot._save_history_to_disk(channel_id)
+
+        await message.channel.send(
+            bot.i18n.t("history_delete_success", count=len(pending["indices"]))
+        )
+    else:
+        await message.channel.send(bot.i18n.t("history_delete_cancelled"))
+
+    return True
+
+
+async def _handle_auto_response(message) -> None:
+    """Handle auto-response to messages in enabled channels.
+
+    Args:
+        message: Discord message object.
+    """
+    async with message.channel.typing():
+        try:
+            # Check for image attachments
+            images = []
+            supported_types = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+
+            for attachment in message.attachments:
+                if attachment.content_type and attachment.content_type in supported_types:
+                    try:
+                        image_data = await attachment.read()
+                        images.append((image_data, attachment.content_type))
+                    except Exception as e:
+                        print(f"Failed to download image {attachment.filename}: {e}")
+
+            # Use message content or default prompt if only images
+            prompt = message.content if message.content else "この画像について説明してください。"
+
+            response_text = await bot.ask_gemini(
+                message.channel.id,
+                prompt,
+                images=images if images else None,
+                user_id=message.author.id,
+            )
+
+            # Prepend current mode indicator to response
+            tool_mode = bot.get_tool_mode(message.channel.id)
+            mode_indicator = f"[{tool_mode}] "
+            display_text = mode_indicator + response_text
+
+            await bot.send_response(message.channel, display_text)
+        except Exception as e:
+            await message.channel.send(f"An error occurred: {e}")
+
+
+@bot.event
+async def on_message(message):
+    """Handle incoming messages.
+
+    Dispatches to specialized handlers based on message context.
+    Cyclomatic Complexity reduced from 18 to 5 by extracting handlers.
+    """
+    # Ignore messages from the bot itself
+    if message.author == bot.user:
         return
 
-    # Check if this user has a pending delete confirmation
-    if user_id in bot.pending_delete_confirmations:
-        content = message.content.strip().lower()
-        pending = bot.pending_delete_confirmations[user_id]
-        channel_id = pending["channel_id"]
+    # Handle GEMINI.md file upload (works in any channel)
+    if await _handle_gemini_md_upload(message):
+        return
 
-        # Only process if in the same channel
-        if message.channel.id == channel_id:
-            del bot.pending_delete_confirmations[user_id]
+    # Handle pending model selection interaction
+    if await _handle_model_selection(message):
+        return
 
-            if content == "yes":
-                # Perform deletion
-                indices = sorted(pending["indices"], reverse=True)
-                history = bot.conversation_history.get(channel_id, [])
-
-                for idx in indices:
-                    if 0 <= idx < len(history):
-                        history.pop(idx)
-
-                # Save updated history
-                bot._save_history_to_disk(channel_id)
-
-                await message.channel.send(
-                    bot.i18n.t("history_delete_success", count=len(pending["indices"]))
-                )
-            else:
-                await message.channel.send(bot.i18n.t("history_delete_cancelled"))
-            return
+    # Handle pending delete confirmation interaction
+    if await _handle_delete_confirmation(message):
+        return
 
     # Check if the message is a command (starts with prefix)
     if message.content.startswith(bot.command_prefix):
         await bot.process_commands(message)
         return
 
-    # Check if the message is in an enabled channel
+    # Auto-respond in enabled channels
     if message.channel.id in enabled_channel_ids:
-        # Auto-respond to all messages in Gemini-enabled channels
-        async with message.channel.typing():
-            try:
-                # Check for image attachments
-                images = []
-                supported_types = {"image/png", "image/jpeg", "image/gif", "image/webp"}
-
-                for attachment in message.attachments:
-                    # Check if it's an image by content_type
-                    if attachment.content_type and attachment.content_type in supported_types:
-                        try:
-                            image_data = await attachment.read()
-                            images.append((image_data, attachment.content_type))
-                        except Exception as e:
-                            print(f"Failed to download image {attachment.filename}: {e}")
-
-                # Use message content or default prompt if only images
-                prompt = message.content if message.content else "この画像について説明してください。"
-
-                response_text = await bot.ask_gemini(
-                    message.channel.id,
-                    prompt,
-                    images=images if images else None,
-                    user_id=message.author.id,
-                )
-
-                # Prepend current mode indicator to response
-                tool_mode = bot.get_tool_mode(message.channel.id)
-                mode_indicator = f"[{tool_mode}] "
-                display_text = mode_indicator + response_text
-
-                await bot.send_response(message.channel, display_text)
-            except Exception as e:
-                await message.channel.send(f"An error occurred: {e}")
+        await _handle_auto_response(message)
 
 
 if __name__ == "__main__":

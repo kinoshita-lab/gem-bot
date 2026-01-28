@@ -22,6 +22,104 @@ class Commands(commands.Cog):
         """Shortcut for translation."""
         return self.bot.i18n.t(key, **kwargs)
 
+    # =========================================================================
+    # Helper Methods
+    # =========================================================================
+
+    async def _fetch_and_sort_models(self) -> tuple[list[str], list[str]]:
+        """Fetch and sort available Gemini models.
+
+        Returns:
+            Tuple of (recommended_models, other_models) lists.
+        """
+        models = [m async for m in await self.bot.gemini_client.aio.models.list()]
+
+        # Extract and clean model names
+        model_names = []
+        for m in models:
+            name = m.name
+            if name:
+                if name.startswith("models/"):
+                    name = name.replace("models/", "")
+                model_names.append(name)
+
+        model_names.sort()
+
+        # Separate recommended from others
+        recommended = [m for m in self.RECOMMENDED_MODELS if m in model_names]
+        other_models = [m for m in model_names if m not in recommended]
+
+        return recommended, other_models
+
+    def _build_model_fields(
+        self,
+        embed: discord.Embed,
+        recommended: list[str],
+        other_models: list[str],
+        numbered: bool = False,
+        chunk_size: int = 20,
+    ) -> None:
+        """Add model list fields to an embed.
+
+        Args:
+            embed: Discord embed to add fields to.
+            recommended: List of recommended model names.
+            other_models: List of other model names.
+            numbered: Whether to show numbers for selection.
+            chunk_size: Max models per field.
+        """
+        # Add recommended models field
+        if recommended:
+            if numbered:
+                value = "\n".join(
+                    f"`{i + 1}`. {name}" for i, name in enumerate(recommended)
+                )
+            else:
+                value = "\n".join(f"• {name}" for name in recommended)
+            embed.add_field(
+                name=self.t("model_list_recommended"),
+                value=value,
+                inline=False,
+            )
+
+        # Add other models in chunks
+        offset = len(recommended) if numbered else 0
+        for i in range(0, len(other_models), chunk_size):
+            chunk = other_models[i : i + chunk_size]
+            field_name = (
+                self.t("model_list_field")
+                if i == 0
+                else self.t("model_list_field_continued", num=i // chunk_size + 1)
+            )
+            if numbered:
+                value = "\n".join(
+                    f"`{offset + i + j + 1}`. {name}" for j, name in enumerate(chunk)
+                )
+            else:
+                value = "\n".join(f"• {name}" for name in chunk)
+            embed.add_field(name=field_name, value=value, inline=False)
+
+    def _get_message_preview(self, msg, max_length: int = 50) -> str:
+        """Extract and truncate message content for preview.
+
+        Args:
+            msg: Message content object.
+            max_length: Maximum preview length.
+
+        Returns:
+            Truncated message preview string.
+        """
+        content = ""
+        if msg.parts:
+            for part in msg.parts:
+                if hasattr(part, "text") and part.text:
+                    content = part.text
+                    break
+
+        # Truncate and clean
+        preview = content[:max_length] + "..." if len(content) > max_length else content
+        return preview.replace("\n", " ")
+
     @commands.command(name="info")
     async def info(self, ctx: commands.Context):
         """Displays information about the bot."""
@@ -57,65 +155,20 @@ class Commands(commands.Cog):
         """Lists all available Gemini models."""
         async with ctx.typing():
             try:
-                models = [
-                    m async for m in await self.bot.gemini_client.aio.models.list()
-                ]
+                recommended, other_models = await self._fetch_and_sort_models()
                 current_model = self.bot.get_model(ctx.channel.id)
+                total_count = len(recommended) + len(other_models)
 
-                # Create embed for model list
                 embed = discord.Embed(
                     title=self.t("model_list_title"),
                     description=self.t("model_list_current", model=current_model),
                     color=discord.Color.green(),
                 )
 
-                # Group models by base name and show them
-                model_names: list[str] = []
-                for m in models:
-                    # Extract model name (e.g., "models/gemini-2.0-flash" -> "gemini-2.0-flash")
-                    name = m.name
-                    if name:
-                        if name.startswith("models/"):
-                            name = name.replace("models/", "")
-                        model_names.append(name)
+                self._build_model_fields(embed, recommended, other_models)
+                embed.set_footer(text=self.t("model_list_footer", count=total_count))
 
-                # Sort model names
-                model_names.sort()
-
-                # Separate recommended models from the rest
-                recommended = [m for m in self.RECOMMENDED_MODELS if m in model_names]
-                other_models = [m for m in model_names if m not in recommended]
-
-                # Add recommended models field
-                if recommended:
-                    embed.add_field(
-                        name=self.t("model_list_recommended"),
-                        value="\n".join(f"• {name}" for name in recommended),
-                        inline=False,
-                    )
-
-                # Split other models into chunks if too many
-                chunk_size = 20
-                for i in range(0, len(other_models), chunk_size):
-                    chunk = other_models[i : i + chunk_size]
-                    field_name = (
-                        self.t("model_list_field")
-                        if i == 0
-                        else self.t(
-                            "model_list_field_continued", num=i // chunk_size + 1
-                        )
-                    )
-                    embed.add_field(
-                        name=field_name,
-                        value="\n".join(f"• {name}" for name in chunk),
-                        inline=False,
-                    )
-
-                embed.set_footer(
-                    text=self.t("model_list_footer", count=len(model_names))
-                )
                 await ctx.send(embed=embed)
-
             except Exception as e:
                 await ctx.send(self.t("model_list_error", error=e))
 
@@ -127,74 +180,27 @@ class Commands(commands.Cog):
 
         async with ctx.typing():
             try:
-                # Fetch available models
-                models = [
-                    m async for m in await self.bot.gemini_client.aio.models.list()
-                ]
-                model_names: list[str] = []
-                for m in models:
-                    name = m.name
-                    if name:
-                        if name.startswith("models/"):
-                            name = name.replace("models/", "")
-                        model_names.append(name)
-
-                # Sort model names
-                model_names.sort()
-
-                # Separate recommended models from the rest
-                recommended = [m for m in self.RECOMMENDED_MODELS if m in model_names]
-                other_models = [m for m in model_names if m not in recommended]
-
-                # Create ordered list: recommended first, then others
+                recommended, other_models = await self._fetch_and_sort_models()
                 ordered_models = recommended + other_models
-
                 current_model = self.bot.get_model(channel_id)
 
-                # Register pending selection (overwrites any previous selection for this user)
+                # Register pending selection
                 self.bot.pending_model_selections[user_id] = {
                     "channel_id": channel_id,
                     "models": ordered_models,
                 }
 
-                # Send selection prompt
                 embed = discord.Embed(
                     title=self.t("model_select_title"),
                     description=self.t("model_select_description", model=current_model),
                     color=discord.Color.blue(),
                 )
 
-                # Add recommended models field
-                if recommended:
-                    field_value = "\n".join(
-                        f"`{j + 1}`. {name}" for j, name in enumerate(recommended)
-                    )
-                    embed.add_field(
-                        name=self.t("model_list_recommended"),
-                        value=field_value,
-                        inline=False,
-                    )
-
-                # Split other models into chunks if too many
-                chunk_size = 25
-                offset = len(recommended)
-                for i in range(0, len(other_models), chunk_size):
-                    chunk = other_models[i : i + chunk_size]
-                    field_name = (
-                        self.t("model_list_field")
-                        if i == 0
-                        else self.t(
-                            "model_list_field_continued", num=i // chunk_size + 1
-                        )
-                    )
-                    field_value = "\n".join(
-                        f"`{offset + i + j + 1}`. {name}"
-                        for j, name in enumerate(chunk)
-                    )
-                    embed.add_field(name=field_name, value=field_value, inline=False)
+                self._build_model_fields(
+                    embed, recommended, other_models, numbered=True, chunk_size=25
+                )
 
                 await ctx.send(embed=embed)
-
             except Exception as e:
                 await ctx.send(self.t("model_list_error", error=e))
 
@@ -224,6 +230,50 @@ class Commands(commands.Cog):
         if ctx.invoked_subcommand is None:
             await self._handle_invalid_subcommand(ctx, "history_usage")
 
+    def _calculate_history_range(
+        self, total: int, start: int | None, count: int
+    ) -> tuple[int, int]:
+        """Calculate start and end indices for history display.
+
+        Args:
+            total: Total number of messages.
+            start: User-specified start (1-based) or None for last N.
+            count: Number of messages to show.
+
+        Returns:
+            Tuple of (start_index, end_index) for slicing.
+        """
+        count = max(1, min(count, 50))  # Limit to reasonable range
+
+        if start is None:
+            start_index = max(0, total - count)
+        else:
+            start_index = max(0, min(start - 1, total - 1))
+
+        end_index = min(start_index + count, total)
+        return start_index, end_index
+
+    def _build_history_lines(
+        self, messages: list, start_index: int, max_preview: int = 50
+    ) -> list[str]:
+        """Build formatted lines for history display.
+
+        Args:
+            messages: List of message objects.
+            start_index: Starting index for numbering.
+            max_preview: Maximum preview length.
+
+        Returns:
+            List of formatted message lines.
+        """
+        lines = []
+        for i, msg in enumerate(messages):
+            actual_index = start_index + i + 1  # 1-based
+            role = msg.role.upper()
+            preview = self._get_message_preview(msg, max_preview)
+            lines.append(f"`{actual_index}`. [{role}] {preview}")
+        return lines
+
     @history.command(name="list")
     async def history_list(
         self, ctx: commands.Context, start: int | None = None, count: int = 10
@@ -239,19 +289,7 @@ class Commands(commands.Cog):
                 return
 
             total = len(history)
-            # Limit count to reasonable range
-            count = max(1, min(count, 50))
-
-            # Determine start index (1-based input, convert to 0-based)
-            if start is None:
-                # Default: show last N messages
-                start_index = max(0, total - count)
-            else:
-                # User specified start (1-based)
-                start_index = max(0, min(start - 1, total - 1))
-
-            # Calculate end index
-            end_index = min(start_index + count, total)
+            start_index, end_index = self._calculate_history_range(total, start, count)
             shown_messages = history[start_index:end_index]
 
             embed = discord.Embed(
@@ -259,38 +297,16 @@ class Commands(commands.Cog):
                 color=discord.Color.blue(),
             )
 
-            # Build message list
-            lines = []
-            for i, msg in enumerate(shown_messages):
-                actual_index = start_index + i + 1  # 1-based index
-                role = msg.role.upper()
-                # Get text content from parts
-                content = ""
-                if msg.parts:
-                    for part in msg.parts:
-                        if hasattr(part, "text") and part.text:
-                            content = part.text
-                            break
-                # Truncate long messages
-                preview = content[:50] + "..." if len(content) > 50 else content
-                # Replace newlines with spaces for cleaner display
-                preview = preview.replace("\n", " ")
-                lines.append(f"`{actual_index}`. [{role}] {preview}")
-
-            # Split into multiple fields if too long
+            # Build and add message lines
+            lines = self._build_history_lines(shown_messages, start_index)
             chunk_size = 10
             for i in range(0, len(lines), chunk_size):
                 chunk = lines[i : i + chunk_size]
                 field_name = (
-                    self.t("history_list_title")
-                    if i == 0
+                    "\u200b" if i == 0
                     else f"{self.t('history_list_title')} ({i // chunk_size + 1})"
                 )
-                embed.add_field(
-                    name=field_name if i > 0 else "\u200b",  # Zero-width space for first
-                    value="\n".join(chunk),
-                    inline=False,
-                )
+                embed.add_field(name=field_name, value="\n".join(chunk), inline=False)
 
             embed.set_footer(
                 text=self.t("history_list_footer", shown=len(shown_messages), total=total)
@@ -298,6 +314,48 @@ class Commands(commands.Cog):
             await ctx.send(embed=embed)
         except Exception as e:
             await ctx.send(self.t("history_error", error=e))
+
+    def _get_deletion_indices(self, history: list, idx: int) -> list[int]:
+        """Get indices of messages to delete (including paired message).
+
+        Args:
+            history: Conversation history list.
+            idx: Index of target message (0-based).
+
+        Returns:
+            List of indices to delete.
+        """
+        target_msg = history[idx]
+        indices = [idx]
+
+        if target_msg.role == "user":
+            # Also delete next model response if exists
+            if idx + 1 < len(history) and history[idx + 1].role == "model":
+                indices.append(idx + 1)
+        elif target_msg.role == "model":
+            # Also delete previous user message if exists
+            if idx - 1 >= 0 and history[idx - 1].role == "user":
+                indices.insert(0, idx - 1)
+
+        return indices
+
+    def _build_deletion_preview(self, history: list, indices: list[int]) -> list[str]:
+        """Build preview strings for messages to be deleted.
+
+        Args:
+            history: Conversation history list.
+            indices: Indices of messages to delete.
+
+        Returns:
+            List of formatted preview strings.
+        """
+        previews = []
+        for i in sorted(indices):
+            msg = history[i]
+            role = msg.role.upper()
+            preview = self._get_message_preview(msg, max_length=100)
+            previews.append(f"`{i + 1}`. [{role}] {preview}")
+        return previews
 
     @history.command(name="delete")
     async def history_delete(self, ctx: commands.Context, index: int | None = None):
@@ -316,40 +374,13 @@ class Commands(commands.Cog):
                 await ctx.send(self.t("history_list_empty"))
                 return
 
-            # Convert to 0-based index
-            idx = index - 1
-
+            idx = index - 1  # Convert to 0-based
             if idx < 0 or idx >= len(history):
                 await ctx.send(self.t("history_delete_not_found", index=index))
                 return
 
-            # Determine which messages to delete (pair deletion)
-            target_msg = history[idx]
-            indices_to_delete = [idx]
-
-            if target_msg.role == "user":
-                # If user message, also delete next model response if exists
-                if idx + 1 < len(history) and history[idx + 1].role == "model":
-                    indices_to_delete.append(idx + 1)
-            elif target_msg.role == "model":
-                # If model message, also delete previous user message if exists
-                if idx - 1 >= 0 and history[idx - 1].role == "user":
-                    indices_to_delete.insert(0, idx - 1)
-
-            # Build confirmation message
-            messages_preview = []
-            for i in sorted(indices_to_delete):
-                msg = history[i]
-                role = msg.role.upper()
-                content = ""
-                if msg.parts:
-                    for part in msg.parts:
-                        if hasattr(part, "text") and part.text:
-                            content = part.text
-                            break
-                preview = content[:100] + "..." if len(content) > 100 else content
-                preview = preview.replace("\n", " ")
-                messages_preview.append(f"`{i + 1}`. [{role}] {preview}")
+            indices_to_delete = self._get_deletion_indices(history, idx)
+            messages_preview = self._build_deletion_preview(history, indices_to_delete)
 
             # Register pending confirmation
             self.bot.pending_delete_confirmations[user_id] = {
@@ -931,7 +962,7 @@ class Commands(commands.Cog):
         # Check if calendar is configured
         calendar_auth = self._get_calendar_auth()
         if calendar_auth is None:
-            await self._send_calendar_setup_guide(ctx)
+            await self._send_google_setup_guide(ctx)
             return
 
         # Check if user is authenticated
@@ -951,7 +982,7 @@ class Commands(commands.Cog):
         # Check if calendar/tasks is configured (uses same credentials)
         calendar_auth = self._get_calendar_auth()
         if calendar_auth is None:
-            await self._send_calendar_setup_guide(ctx)
+            await self._send_google_setup_guide(ctx)
             return
 
         # Check if user is authenticated
@@ -962,7 +993,7 @@ class Commands(commands.Cog):
         self.bot.set_tool_mode(channel_id, "todo")
         await ctx.send(self.t("mode_changed", mode="todo"))
 
-    # ==================== Calendar Commands ====================
+    # ==================== Google Commands ====================
 
     def _get_calendar_auth(self) -> CalendarAuthManager | None:
         """Get the calendar auth manager from bot, or None if not available."""
@@ -970,7 +1001,7 @@ class Commands(commands.Cog):
             return self.bot.calendar_auth
         return None
 
-    async def _send_calendar_setup_guide(self, ctx: commands.Context) -> None:
+    async def _send_google_setup_guide(self, ctx: commands.Context) -> None:
         """Send a helpful setup guide when credentials.json is missing or invalid."""
         # Create a temporary manager just to check configuration status
         temp_manager = CalendarAuthManager()
@@ -981,64 +1012,64 @@ class Commands(commands.Cog):
 
         # Build embed with setup instructions
         embed = discord.Embed(
-            title=self.t("calendar_setup_required_title"),
+            title=self.t("google_setup_required_title"),
             color=discord.Color.orange(),
         )
 
         # Error-specific message
         if error_code == "file_not_found":
-            embed.description = self.t("calendar_setup_file_not_found")
+            embed.description = self.t("google_setup_file_not_found")
         elif error_code == "invalid_json":
-            embed.description = self.t("calendar_setup_invalid_json")
+            embed.description = self.t("google_setup_invalid_json")
         elif error_code == "missing_installed":
-            embed.description = self.t("calendar_setup_wrong_format")
+            embed.description = self.t("google_setup_wrong_format")
         elif error_code in ("missing_client_id", "missing_client_secret"):
-            embed.description = self.t("calendar_setup_missing_fields")
+            embed.description = self.t("google_setup_missing_fields")
         else:
-            embed.description = self.t("calendar_setup_unknown_error", message=config_status.get("message", ""))
+            embed.description = self.t("google_setup_unknown_error", message=config_status.get("message", ""))
 
         # Add setup steps
         embed.add_field(
-            name=self.t("calendar_setup_steps_title"),
-            value=self.t("calendar_setup_steps"),
+            name=self.t("google_setup_steps_title"),
+            value=self.t("google_setup_steps"),
             inline=False,
         )
 
         # Add link to Google Cloud Console
         embed.add_field(
-            name=self.t("calendar_setup_link_title"),
+            name=self.t("google_setup_link_title"),
             value=setup_url,
             inline=False,
         )
 
         await ctx.send(embed=embed)
 
-    @commands.group(name="calendar")
-    async def calendar(self, ctx: commands.Context):
-        """Google Calendar integration commands."""
+    @commands.group(name="google")
+    async def google(self, ctx: commands.Context):
+        """Google integration commands."""
         if ctx.invoked_subcommand is None:
-            await self._handle_invalid_subcommand(ctx, "calendar_usage")
+            await self._handle_invalid_subcommand(ctx, "google_usage")
 
-    @calendar.command(name="link")
-    async def calendar_link(self, ctx: commands.Context):
-        """Link your Google account for Calendar access."""
+    @google.command(name="link")
+    async def google_link(self, ctx: commands.Context):
+        """Link your Google account."""
         user_id = ctx.author.id
 
         calendar_auth = self._get_calendar_auth()
 
         # Check if calendar manager is available and configured
         if calendar_auth is None:
-            await self._send_calendar_setup_guide(ctx)
+            await self._send_google_setup_guide(ctx)
             return
 
         # Check if credentials.json is valid
         if not calendar_auth.is_credentials_configured():
-            await self._send_calendar_setup_guide(ctx)
+            await self._send_google_setup_guide(ctx)
             return
 
         # Check if already authenticated
         if calendar_auth.is_user_authenticated(user_id):
-            await ctx.send(self.t("calendar_already_linked"))
+            await ctx.send(self.t("google_already_linked"))
             return
 
         try:
@@ -1048,79 +1079,79 @@ class Commands(commands.Cog):
             # Send DM with auth URL for privacy
             try:
                 dm_channel = await ctx.author.create_dm()
-                await dm_channel.send(self.t("calendar_link_dm", url=auth_url))
-                await ctx.send(self.t("calendar_link_check_dm"))
+                await dm_channel.send(self.t("google_link_dm", url=auth_url))
+                await ctx.send(self.t("google_link_check_dm"))
             except discord.Forbidden:
                 # Can't DM user, send in channel (less secure but functional)
-                await ctx.send(self.t("calendar_link_url", url=auth_url))
+                await ctx.send(self.t("google_link_url", url=auth_url))
 
             # Wait for auth to complete (with timeout)
             try:
                 await future
-                await ctx.send(self.t("calendar_link_success", user=ctx.author.mention))
+                await ctx.send(self.t("google_link_success", user=ctx.author.mention))
             except TimeoutError:
-                await ctx.send(self.t("calendar_link_timeout"))
+                await ctx.send(self.t("google_link_timeout"))
             except Exception as e:
-                await ctx.send(self.t("calendar_link_error", error=str(e)))
+                await ctx.send(self.t("google_link_error", error=str(e)))
 
         except FileNotFoundError:
-            await self._send_calendar_setup_guide(ctx)
+            await self._send_google_setup_guide(ctx)
         except Exception as e:
-            await ctx.send(self.t("calendar_error", error=str(e)))
+            await ctx.send(self.t("google_error", error=str(e)))
 
-    @calendar.command(name="unlink")
-    async def calendar_unlink(self, ctx: commands.Context):
+    @google.command(name="unlink")
+    async def google_unlink(self, ctx: commands.Context):
         """Unlink your Google account."""
         user_id = ctx.author.id
 
         calendar_auth = self._get_calendar_auth()
 
         if calendar_auth is None:
-            await self._send_calendar_setup_guide(ctx)
+            await self._send_google_setup_guide(ctx)
             return
 
         if calendar_auth.revoke_user(user_id):
-            await ctx.send(self.t("calendar_unlink_success"))
+            await ctx.send(self.t("google_unlink_success"))
         else:
-            await ctx.send(self.t("calendar_not_linked"))
+            await ctx.send(self.t("google_not_linked"))
 
-    @calendar.command(name="status")
-    async def calendar_status(self, ctx: commands.Context):
-        """Check your Google Calendar connection status."""
+    @google.command(name="status")
+    async def google_status(self, ctx: commands.Context):
+        """Check your Google account connection status."""
         user_id = ctx.author.id
 
         calendar_auth = self._get_calendar_auth()
 
         # If not configured, show setup guide
         if calendar_auth is None:
-            await self._send_calendar_setup_guide(ctx)
+            await self._send_google_setup_guide(ctx)
             return
 
         # Check if credentials.json is valid
         if not calendar_auth.is_credentials_configured():
-            await self._send_calendar_setup_guide(ctx)
+            await self._send_google_setup_guide(ctx)
             return
 
         status = calendar_auth.get_auth_status(user_id)
 
         if status["authenticated"]:
             embed = discord.Embed(
-                title=self.t("calendar_status_title"),
-                description=self.t("calendar_status_connected"),
+                title=self.t("google_status_title"),
+                description=self.t("google_status_connected"),
                 color=discord.Color.green(),
             )
         else:
             embed = discord.Embed(
-                title=self.t("calendar_status_title"),
+                title=self.t("google_status_title"),
                 description=self.t(
-                    "calendar_status_not_connected",
+                    "google_status_not_connected",
                     reason=status.get("message", ""),
                 ),
                 color=discord.Color.orange(),
             )
             embed.add_field(
-                name=self.t("calendar_status_hint_title"),
-                value=self.t("calendar_status_hint"),
+                name=self.t("google_status_hint_title"),
+                value=self.t("google_status_hint"),
                 inline=False,
             )
 

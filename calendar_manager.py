@@ -32,6 +32,170 @@ SCOPES = [
 DEFAULT_CREDENTIALS_FILE = "credentials.json"
 DEFAULT_TOKENS_DIR = "history/tokens"
 
+# OAuth callback timeout in seconds
+OAUTH_CALLBACK_TIMEOUT = 300
+
+
+# =============================================================================
+# OAuth Callback Handler
+# =============================================================================
+
+
+class OAuthCallbackHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for OAuth 2.0 callback.
+
+    Handles the redirect from Google's OAuth server after user authorization.
+    Designed to be used with CalendarAuthManager for credential management.
+    """
+
+    # Class-level reference to auth manager (set before server starts)
+    auth_manager = None
+
+    def log_message(self, format, *args):
+        """Suppress HTTP server logging."""
+        pass
+
+    def do_GET(self):
+        """Handle GET request for OAuth callback."""
+        parsed = urlparse(self.path)
+
+        # Only handle /callback path
+        if parsed.path != "/callback":
+            self._send_not_found()
+            return
+
+        # Parse query parameters
+        params = parse_qs(parsed.query)
+        received_state = params.get("state", [None])[0]
+        code = params.get("code", [None])[0]
+        error = params.get("error", [None])[0]
+
+        # Get pending auth info
+        pending = self._get_pending_auth(received_state)
+        if not pending:
+            self._send_invalid_request()
+            return
+
+        # Handle error from OAuth provider
+        if error:
+            self._handle_oauth_error(error, pending)
+            return
+
+        # Handle successful authorization
+        if code:
+            self._handle_oauth_success(code, pending, received_state)
+
+        # Signal to stop server
+        self.server.should_stop = True
+
+    def _get_pending_auth(self, state: str) -> dict | None:
+        """Get pending auth info for the given state.
+
+        Args:
+            state: OAuth state parameter.
+
+        Returns:
+            Pending auth dictionary or None if not found.
+        """
+        if not self.auth_manager:
+            return None
+
+        with self.auth_manager._lock:
+            return self.auth_manager._pending_auth.get(state)
+
+    def _send_html_response(self, status_code: int, html: str) -> None:
+        """Send an HTML response.
+
+        Args:
+            status_code: HTTP status code.
+            html: HTML content to send.
+        """
+        self.send_response(status_code)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(html.encode())
+
+    def _send_not_found(self) -> None:
+        """Send 404 Not Found response."""
+        self.send_response(404)
+        self.end_headers()
+
+    def _send_invalid_request(self) -> None:
+        """Send invalid request response."""
+        self._send_html_response(
+            400,
+            "<html><body><h1>Invalid request</h1></body></html>"
+        )
+
+    def _resolve_future(self, pending: dict, result=None, exception=None) -> None:
+        """Resolve the pending future with result or exception.
+
+        Args:
+            pending: Pending auth dictionary.
+            result: Success result (if any).
+            exception: Exception to raise (if any).
+        """
+        future = pending["future"]
+        loop = future.get_loop()
+
+        if exception:
+            loop.call_soon_threadsafe(future.set_exception, exception)
+        else:
+            loop.call_soon_threadsafe(future.set_result, result)
+
+    def _handle_oauth_error(self, error: str, pending: dict) -> None:
+        """Handle OAuth error response.
+
+        Args:
+            error: Error message from OAuth provider.
+            pending: Pending auth dictionary.
+        """
+        self._send_html_response(
+            200,
+            f"<html><body><h1>Authentication failed: {error}</h1>"
+            "<p>You can close this window.</p></body></html>"
+        )
+        self._resolve_future(pending, exception=Exception(f"OAuth error: {error}"))
+
+    def _handle_oauth_success(self, code: str, pending: dict, state: str) -> None:
+        """Handle successful OAuth authorization.
+
+        Args:
+            code: Authorization code from OAuth provider.
+            pending: Pending auth dictionary.
+            state: OAuth state parameter.
+        """
+        try:
+            # Exchange code for tokens
+            flow = pending["flow"]
+            flow.fetch_token(code=code)
+            creds = flow.credentials
+
+            # Save credentials
+            user_id = pending["user_id"]
+            self.auth_manager._save_credentials(user_id, creds)
+
+            self._send_html_response(
+                200,
+                "<html><body>"
+                "<h1>Authentication successful!</h1>"
+                "<p>You can close this window and return to Discord.</p>"
+                "</body></html>"
+            )
+            self._resolve_future(pending, result=True)
+
+        except Exception as e:
+            self._send_html_response(
+                500,
+                f"<html><body><h1>Error: {e}</h1></body></html>"
+            )
+            self._resolve_future(pending, exception=e)
+
+        finally:
+            # Clean up pending auth
+            with self.auth_manager._lock:
+                self.auth_manager._pending_auth.pop(state, None)
+
 
 class CalendarAuthManager:
     """Manages OAuth 2.0 authentication for Google Calendar API."""
@@ -323,129 +487,53 @@ class CalendarAuthManager:
             state: The state parameter for this auth flow.
             port: Port to listen on.
         """
-        auth_manager = self
+        # Set auth manager reference for the handler class
+        OAuthCallbackHandler.auth_manager = self
 
-        class CallbackHandler(BaseHTTPRequestHandler):
-            def log_message(self, format, *args):
-                # Suppress logging
-                pass
-
-            def do_GET(self):
-                parsed = urlparse(self.path)
-                if parsed.path != "/callback":
-                    self.send_response(404)
-                    self.end_headers()
-                    return
-
-                params = parse_qs(parsed.query)
-                received_state = params.get("state", [None])[0]
-                code = params.get("code", [None])[0]
-                error = params.get("error", [None])[0]
-
-                # Validate state
-                with auth_manager._lock:
-                    pending = auth_manager._pending_auth.get(received_state)
-
-                if not pending:
-                    self.send_response(400)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.end_headers()
-                    self.wfile.write(
-                        b"<html><body><h1>Invalid request</h1></body></html>"
-                    )
-                    return
-
-                if error:
-                    # Auth was denied or failed
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.end_headers()
-                    self.wfile.write(
-                        f"<html><body><h1>Authentication failed: {error}</h1>"
-                        "<p>You can close this window.</p></body></html>".encode()
-                    )
-                    # Resolve future with error
-                    loop = pending["future"].get_loop()
-                    loop.call_soon_threadsafe(
-                        pending["future"].set_exception,
-                        Exception(f"OAuth error: {error}"),
-                    )
-                    return
-
-                if code:
-                    try:
-                        # Exchange code for tokens
-                        flow = pending["flow"]
-                        flow.fetch_token(code=code)
-                        creds = flow.credentials
-
-                        # Save credentials
-                        user_id = pending["user_id"]
-                        auth_manager._save_credentials(user_id, creds)
-
-                        self.send_response(200)
-                        self.send_header("Content-Type", "text/html; charset=utf-8")
-                        self.end_headers()
-                        self.wfile.write(
-                            "<html><body>"
-                            "<h1>Authentication successful!</h1>"
-                            "<p>You can close this window and return to Discord.</p>"
-                            "</body></html>".encode()
-                        )
-
-                        # Resolve future with success
-                        loop = pending["future"].get_loop()
-                        loop.call_soon_threadsafe(
-                            pending["future"].set_result,
-                            True,
-                        )
-                    except Exception as e:
-                        self.send_response(500)
-                        self.send_header("Content-Type", "text/html; charset=utf-8")
-                        self.end_headers()
-                        self.wfile.write(
-                            f"<html><body><h1>Error: {e}</h1></body></html>".encode()
-                        )
-                        loop = pending["future"].get_loop()
-                        loop.call_soon_threadsafe(
-                            pending["future"].set_exception,
-                            e,
-                        )
-                    finally:
-                        # Clean up pending auth
-                        with auth_manager._lock:
-                            auth_manager._pending_auth.pop(received_state, None)
-
-                # Signal to stop server
-                self.server.should_stop = True
-
-        # Run server in a thread
-        def run_server():
-            server = HTTPServer(("localhost", port), CallbackHandler)
-            server.should_stop = False
-            server.timeout = 1  # Check every second
-
-            # Wait for callback with timeout (5 minutes)
-            timeout_seconds = 300
-            elapsed = 0
-            while not server.should_stop and elapsed < timeout_seconds:
-                server.handle_request()
-                elapsed += 1
-
-            if elapsed >= timeout_seconds:
-                # Timeout - cancel the pending auth
-                with auth_manager._lock:
-                    pending = auth_manager._pending_auth.pop(state, None)
-                if pending and not pending["future"].done():
-                    loop = pending["future"].get_loop()
-                    loop.call_soon_threadsafe(
-                        pending["future"].set_exception,
-                        TimeoutError("Authentication timed out"),
-                    )
-
-        # Run in thread to not block
-        thread = threading.Thread(target=run_server, daemon=True)
+        # Run server in a separate thread to avoid blocking
+        thread = threading.Thread(
+            target=self._run_server_thread,
+            args=(state, port),
+            daemon=True,
+        )
         thread.start()
+
+    def _run_server_thread(self, state: str, port: int) -> None:
+        """Run the OAuth callback server in a thread.
+
+        Args:
+            state: The state parameter for this auth flow.
+            port: Port to listen on.
+        """
+        server = HTTPServer(("localhost", port), OAuthCallbackHandler)
+        server.should_stop = False
+        server.timeout = 1  # Check every second
+
+        # Wait for callback with timeout
+        elapsed = 0
+        while not server.should_stop and elapsed < OAUTH_CALLBACK_TIMEOUT:
+            server.handle_request()
+            elapsed += 1
+
+        # Handle timeout
+        if elapsed >= OAUTH_CALLBACK_TIMEOUT:
+            self._handle_auth_timeout(state)
+
+    def _handle_auth_timeout(self, state: str) -> None:
+        """Handle authentication timeout.
+
+        Args:
+            state: The state parameter for the timed out auth flow.
+        """
+        with self._lock:
+            pending = self._pending_auth.pop(state, None)
+
+        if pending and not pending["future"].done():
+            loop = pending["future"].get_loop()
+            loop.call_soon_threadsafe(
+                pending["future"].set_exception,
+                TimeoutError("Authentication timed out"),
+            )
 
     def get_auth_status(self, user_id: int) -> dict:
         """Get authentication status for a user.
