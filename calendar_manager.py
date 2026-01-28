@@ -1,7 +1,7 @@
-"""Google Calendar OAuth 2.0 authentication manager.
+"""Google Calendar OAuth 2.0 authentication and API manager.
 
 This module handles OAuth 2.0 authentication for Google Calendar API,
-including token management and the authorization flow.
+including token management, the authorization flow, and calendar operations.
 """
 
 import asyncio
@@ -9,7 +9,7 @@ import json
 import os
 import secrets
 import threading
-import webbrowser
+from datetime import datetime, timedelta, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -17,6 +17,8 @@ from urllib.parse import parse_qs, urlparse
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 # OAuth 2.0 scopes for Google Calendar
 SCOPES = [
@@ -478,3 +480,239 @@ class CalendarAuthManager:
                 "authenticated": False,
                 "message": f"Error: {e}",
             }
+
+    def _get_calendar_service(self, user_id: int):
+        """Get Google Calendar API service for a user.
+
+        Args:
+            user_id: Discord user ID.
+
+        Returns:
+            Google Calendar API service object.
+
+        Raises:
+            ValueError: If user is not authenticated.
+        """
+        creds = self.get_credentials(user_id)
+        if not creds:
+            raise ValueError("User is not authenticated")
+        return build("calendar", "v3", credentials=creds)
+
+    async def list_events(
+        self,
+        user_id: int,
+        time_min: str | None = None,
+        time_max: str | None = None,
+        max_results: int = 10,
+        calendar_id: str = "primary",
+    ) -> list[dict]:
+        """List events from user's calendar.
+
+        Args:
+            user_id: Discord user ID.
+            time_min: Start time in ISO 8601 format (defaults to now).
+            time_max: End time in ISO 8601 format (optional).
+            max_results: Maximum number of events to return.
+            calendar_id: Calendar ID (defaults to "primary").
+
+        Returns:
+            List of event dictionaries.
+        """
+        service = self._get_calendar_service(user_id)
+
+        # Default time_min to now if not specified
+        if not time_min:
+            time_min = datetime.now(timezone.utc).isoformat()
+
+        # Run in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        events_result = await loop.run_in_executor(
+            None,
+            lambda: service.events()
+            .list(
+                calendarId=calendar_id,
+                timeMin=time_min,
+                timeMax=time_max,
+                maxResults=max_results,
+                singleEvents=True,
+                orderBy="startTime",
+            )
+            .execute(),
+        )
+
+        events = events_result.get("items", [])
+
+        # Convert to simplified format
+        result = []
+        for event in events:
+            start = event.get("start", {})
+            end = event.get("end", {})
+            result.append({
+                "id": event.get("id"),
+                "summary": event.get("summary", "(No title)"),
+                "description": event.get("description", ""),
+                "location": event.get("location", ""),
+                "start": start.get("dateTime") or start.get("date"),
+                "end": end.get("dateTime") or end.get("date"),
+                "html_link": event.get("htmlLink"),
+            })
+
+        return result
+
+    async def create_event(
+        self,
+        user_id: int,
+        summary: str,
+        start_time: str,
+        end_time: str,
+        description: str = "",
+        location: str = "",
+        calendar_id: str = "primary",
+    ) -> dict:
+        """Create a new event in user's calendar.
+
+        Args:
+            user_id: Discord user ID.
+            summary: Event title.
+            start_time: Start time in ISO 8601 format.
+            end_time: End time in ISO 8601 format.
+            description: Event description (optional).
+            location: Event location (optional).
+            calendar_id: Calendar ID (defaults to "primary").
+
+        Returns:
+            Created event dictionary.
+        """
+        service = self._get_calendar_service(user_id)
+
+        # Determine if this is an all-day event or timed event
+        # All-day events use 'date', timed events use 'dateTime'
+        if "T" in start_time:
+            start = {"dateTime": start_time, "timeZone": "Asia/Tokyo"}
+            end = {"dateTime": end_time, "timeZone": "Asia/Tokyo"}
+        else:
+            start = {"date": start_time}
+            end = {"date": end_time}
+
+        event_body = {
+            "summary": summary,
+            "description": description,
+            "location": location,
+            "start": start,
+            "end": end,
+        }
+
+        loop = asyncio.get_event_loop()
+        event = await loop.run_in_executor(
+            None,
+            lambda: service.events()
+            .insert(calendarId=calendar_id, body=event_body)
+            .execute(),
+        )
+
+        return {
+            "id": event.get("id"),
+            "summary": event.get("summary"),
+            "start": event.get("start", {}).get("dateTime") or event.get("start", {}).get("date"),
+            "end": event.get("end", {}).get("dateTime") or event.get("end", {}).get("date"),
+            "html_link": event.get("htmlLink"),
+        }
+
+    async def update_event(
+        self,
+        user_id: int,
+        event_id: str,
+        summary: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        description: str | None = None,
+        location: str | None = None,
+        calendar_id: str = "primary",
+    ) -> dict:
+        """Update an existing event.
+
+        Args:
+            user_id: Discord user ID.
+            event_id: ID of the event to update.
+            summary: New event title (optional).
+            start_time: New start time in ISO 8601 format (optional).
+            end_time: New end time in ISO 8601 format (optional).
+            description: New description (optional).
+            location: New location (optional).
+            calendar_id: Calendar ID (defaults to "primary").
+
+        Returns:
+            Updated event dictionary.
+        """
+        service = self._get_calendar_service(user_id)
+
+        # First, get the existing event
+        loop = asyncio.get_event_loop()
+        event = await loop.run_in_executor(
+            None,
+            lambda: service.events()
+            .get(calendarId=calendar_id, eventId=event_id)
+            .execute(),
+        )
+
+        # Update fields if provided
+        if summary is not None:
+            event["summary"] = summary
+        if description is not None:
+            event["description"] = description
+        if location is not None:
+            event["location"] = location
+        if start_time is not None:
+            if "T" in start_time:
+                event["start"] = {"dateTime": start_time, "timeZone": "Asia/Tokyo"}
+            else:
+                event["start"] = {"date": start_time}
+        if end_time is not None:
+            if "T" in end_time:
+                event["end"] = {"dateTime": end_time, "timeZone": "Asia/Tokyo"}
+            else:
+                event["end"] = {"date": end_time}
+
+        # Update the event
+        updated_event = await loop.run_in_executor(
+            None,
+            lambda: service.events()
+            .update(calendarId=calendar_id, eventId=event_id, body=event)
+            .execute(),
+        )
+
+        return {
+            "id": updated_event.get("id"),
+            "summary": updated_event.get("summary"),
+            "start": updated_event.get("start", {}).get("dateTime") or updated_event.get("start", {}).get("date"),
+            "end": updated_event.get("end", {}).get("dateTime") or updated_event.get("end", {}).get("date"),
+            "html_link": updated_event.get("htmlLink"),
+        }
+
+    async def delete_event(
+        self,
+        user_id: int,
+        event_id: str,
+        calendar_id: str = "primary",
+    ) -> bool:
+        """Delete an event from user's calendar.
+
+        Args:
+            user_id: Discord user ID.
+            event_id: ID of the event to delete.
+            calendar_id: Calendar ID (defaults to "primary").
+
+        Returns:
+            True if deletion was successful.
+        """
+        service = self._get_calendar_service(user_id)
+
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: service.events()
+            .delete(calendarId=calendar_id, eventId=event_id)
+            .execute(),
+        )
+
+        return True

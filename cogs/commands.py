@@ -871,6 +871,78 @@ class Commands(commands.Cog):
             await ctx.send(self.t("config_error", error=e))
 
 
+    # ==================== Mode Commands ====================
+
+    # Available tool modes
+    # Internal values: "default" (Google Search), "calendar"
+    TOOL_MODES = {
+        "default": "Default - Google検索を使用",
+        "calendar": "Calendar - Google Calendarを使用（要連携）",
+    }
+
+    @commands.group(name="mode")
+    async def mode(self, ctx: commands.Context):
+        """Switch tool mode for this channel."""
+        if ctx.invoked_subcommand is None:
+            # Show current mode and available modes
+            channel_id = ctx.channel.id
+            current_mode = self.bot.get_tool_mode(channel_id)
+
+            embed = discord.Embed(
+                title=self.t("mode_title"),
+                color=discord.Color.blue(),
+            )
+            embed.add_field(
+                name=self.t("mode_current"),
+                value=f"`{current_mode}` - {self.TOOL_MODES.get(current_mode, '')}",
+                inline=False,
+            )
+
+            modes_list = "\n".join(
+                f"`{mode}` - {desc}" for mode, desc in self.TOOL_MODES.items()
+            )
+            embed.add_field(
+                name=self.t("mode_available"),
+                value=modes_list,
+                inline=False,
+            )
+            embed.add_field(
+                name=self.t("mode_usage_title"),
+                value=self.t("mode_usage"),
+                inline=False,
+            )
+
+            await ctx.send(embed=embed)
+
+    @mode.command(name="default")
+    async def mode_default(self, ctx: commands.Context):
+        """Switch to default mode (Google Search)."""
+        channel_id = ctx.channel.id
+        self.bot.set_tool_mode(channel_id, "default")
+        await ctx.send(self.t("mode_changed", mode="default"))
+
+    @mode.command(name="calendar")
+    async def mode_calendar(self, ctx: commands.Context):
+        """Switch to Calendar mode."""
+        channel_id = ctx.channel.id
+        user_id = ctx.author.id
+
+        # Check if calendar is configured
+        calendar_auth = self._get_calendar_auth()
+        if calendar_auth is None:
+            await self._send_calendar_setup_guide(ctx)
+            return
+
+        # Check if user is authenticated
+        if not calendar_auth.is_user_authenticated(user_id):
+            await ctx.send(self.t("mode_calendar_not_linked"))
+            return
+
+        self.bot.set_tool_mode(channel_id, "calendar")
+        await ctx.send(self.t("mode_changed", mode="calendar"))
+
+    # ==================== Calendar Commands ====================
+
     def _get_calendar_auth(self) -> CalendarAuthManager | None:
         """Get the calendar auth manager from bot, or None if not available."""
         if hasattr(self.bot, "calendar_auth") and self.bot.calendar_auth is not None:

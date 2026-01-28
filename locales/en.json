@@ -116,6 +116,7 @@
   "help_usage": "Usage",
   "help_subcommands": "Subcommands",
   "help_group_integrations": "Integrations",
+  "help_command_mode": "Switch tool mode.",
   "help_command_calendar": "Google Calendar integration commands.",
   "calendar_usage": "Usage:\n`!calendar link` - Link your Google account\n`!calendar unlink` - Unlink your account\n`!calendar status` - Check connection status",
   "calendar_setup_required_title": "Google Calendar Setup Required",
@@ -143,5 +144,12 @@
   "calendar_status_not_connected": "Not connected - {reason}",
   "calendar_status_hint_title": "How to connect",
   "calendar_status_hint": "Use `!calendar link` to connect your Google account.",
-  "calendar_error": "Error: {error}"
+  "calendar_error": "Error: {error}",
+  "mode_title": "Tool Mode Settings",
+  "mode_current": "Current Mode",
+  "mode_available": "Available Modes",
+  "mode_usage_title": "Usage",
+  "mode_usage": "`!mode default` - Switch to default mode (Google Search)\n`!mode calendar` - Switch to Calendar mode",
+  "mode_changed": "Tool mode changed to `{mode}`.",
+  "mode_calendar_not_linked": "To use Calendar mode, please link your Google account first with `!calendar link`."
 }

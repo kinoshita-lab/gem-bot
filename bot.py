@@ -1,3 +1,4 @@
+import json
 import os
 
 import discord
@@ -9,6 +10,7 @@ from dotenv import load_dotenv
 from history_manager import HistoryManager
 from i18n import I18nManager
 from calendar_manager import CalendarAuthManager
+from calendar_tools import get_calendar_tools, CalendarToolHandler
 
 
 class LocalizedHelpCommand(commands.DefaultHelpCommand):
@@ -19,7 +21,7 @@ class LocalizedHelpCommand(commands.DefaultHelpCommand):
         "general": ["help", "info", "lang"],
         "conversation": ["model", "prompt", "config"],
         "history": ["history", "branch"],
-        "tools": ["image"],
+        "tools": ["image", "mode"],
         "integrations": ["calendar"],
     }
 
@@ -210,15 +212,41 @@ class GeminiBot(commands.Bot):
 
         # Calendar auth manager (optional, only if credentials.json exists)
         self.calendar_auth: CalendarAuthManager | None = None
+        self.calendar_tool_handler: CalendarToolHandler | None = None
         try:
             calendar_auth = CalendarAuthManager()
             if calendar_auth.is_credentials_configured():
                 self.calendar_auth = calendar_auth
+                self.calendar_tool_handler = CalendarToolHandler(calendar_auth)
                 print("Google Calendar integration enabled")
             else:
                 print("Google Calendar integration disabled (credentials.json not found)")
         except Exception as e:
             print(f"Google Calendar integration disabled: {e}")
+
+        # Tool mode per channel: channel_id -> mode name
+        # Available modes: "default" (Google Search), "calendar"
+        self.channel_tool_mode: dict[int, str] = {}
+
+    def get_tool_mode(self, channel_id: int) -> str:
+        """Get the current tool mode for a channel.
+
+        Args:
+            channel_id: Discord channel ID.
+
+        Returns:
+            Tool mode name ("default", "calendar", etc.)
+        """
+        return self.channel_tool_mode.get(channel_id, "default")
+
+    def set_tool_mode(self, channel_id: int, mode: str) -> None:
+        """Set the tool mode for a channel.
+
+        Args:
+            channel_id: Discord channel ID.
+            mode: Tool mode name.
+        """
+        self.channel_tool_mode[channel_id] = mode
 
     async def setup_hook(self):
         """Load cogs when the bot starts."""
@@ -333,7 +361,11 @@ class GeminiBot(commands.Bot):
             )
 
     async def ask_gemini(
-        self, channel_id: int, prompt: str, images: list[tuple[bytes, str]] | None = None
+        self,
+        channel_id: int,
+        prompt: str,
+        images: list[tuple[bytes, str]] | None = None,
+        user_id: int | None = None,
     ) -> str:
         """Send a prompt to Gemini and return the response.
 
@@ -341,6 +373,7 @@ class GeminiBot(commands.Bot):
             channel_id: Discord channel ID.
             prompt: Text prompt from user.
             images: Optional list of (image_data, mime_type) tuples.
+            user_id: Discord user ID (for calendar integration).
 
         Returns:
             Response text from Gemini.
@@ -374,10 +407,20 @@ class GeminiBot(commands.Bot):
             # Load generation config
             gen_config = self.history_manager.load_generation_config(channel_id)
 
+            # Build tools list based on channel's tool mode
+            # Note: Google Search and Function Calling cannot be used together
+            tool_mode = self.get_tool_mode(channel_id)
+
+            if tool_mode == "calendar" and self.calendar_tool_handler:
+                tools = get_calendar_tools()
+            else:
+                # Default: Google Search
+                tools = [types.Tool(google_search=types.GoogleSearch())]
+
             # Build config with user settings
             config_params = {
                 "system_instruction": system_prompt,
-                "tools": [types.Tool(google_search=types.GoogleSearch())],
+                "tools": tools,
             }
             # Apply user-configured generation parameters
             config_params.update(gen_config)
@@ -387,7 +430,14 @@ class GeminiBot(commands.Bot):
                 config=types.GenerateContentConfig(**config_params),
                 contents=self.conversation_history[channel_id],
             )
-            response_text = response.text or ""
+
+            # Process response (handle function calls if in calendar mode)
+            if tool_mode == "calendar":
+                response_text = await self._process_response(
+                    response, channel_id, model, config_params, user_id
+                )
+            else:
+                response_text = response.text or ""
 
             # Add model's response to history
             self.conversation_history[channel_id].append(
@@ -405,6 +455,116 @@ class GeminiBot(commands.Bot):
             if self.conversation_history[channel_id]:
                 self.conversation_history[channel_id].pop()
             raise e
+
+    async def _process_response(
+        self,
+        response,
+        channel_id: int,
+        model: str,
+        config_params: dict,
+        user_id: int | None,
+    ) -> str:
+        """Process Gemini response, handling function calls if present.
+
+        Args:
+            response: Gemini API response.
+            channel_id: Discord channel ID.
+            model: Model name.
+            config_params: Generation config parameters.
+            user_id: Discord user ID.
+
+        Returns:
+            Final response text.
+        """
+        # Check if response has valid candidates
+        if not response.candidates:
+            return response.text or ""
+
+        candidate = response.candidates[0]
+
+        # Check if content exists
+        if not candidate.content:
+            return response.text or ""
+
+        # Check if parts exist
+        if not candidate.content.parts:
+            return response.text or ""
+
+        function_calls = []
+
+        # Collect all function calls from parts
+        for part in candidate.content.parts:
+            if hasattr(part, "function_call") and part.function_call:
+                function_calls.append(part.function_call)
+
+        # If no function calls, return text response
+        if not function_calls:
+            return response.text or ""
+
+        # Process function calls
+        function_responses = []
+        for fc in function_calls:
+            result = await self._execute_function_call(fc, user_id)
+            function_responses.append(
+                types.Part.from_function_response(
+                    name=fc.name,
+                    response=result,
+                )
+            )
+
+        # Add model's function call to history
+        self.conversation_history[channel_id].append(candidate.content)
+
+        # Add function responses to history
+        function_response_content = types.Content(
+            role="user",
+            parts=function_responses,
+        )
+        self.conversation_history[channel_id].append(function_response_content)
+
+        # Get final response from Gemini
+        final_response = await self.gemini_client.aio.models.generate_content(
+            model=model,
+            config=types.GenerateContentConfig(**config_params),
+            contents=self.conversation_history[channel_id],
+        )
+
+        # Recursively process in case of chained function calls
+        return await self._process_response(
+            final_response, channel_id, model, config_params, user_id
+        )
+
+    async def _execute_function_call(self, function_call, user_id: int | None) -> dict:
+        """Execute a function call and return the result.
+
+        Args:
+            function_call: Function call object from Gemini.
+            user_id: Discord user ID.
+
+        Returns:
+            Function result dictionary.
+        """
+        function_name = function_call.name
+        function_args = dict(function_call.args) if function_call.args else {}
+
+        # Handle calendar functions
+        if function_name in (
+            "list_calendar_events",
+            "create_calendar_event",
+            "update_calendar_event",
+            "delete_calendar_event",
+        ):
+            if not self.calendar_tool_handler:
+                return {"error": "Calendar integration not configured"}
+            if not user_id:
+                return {"error": "User ID not available"}
+
+            return await self.calendar_tool_handler.handle_function_call(
+                function_name, function_args, user_id
+            )
+
+        # Unknown function
+        return {"error": f"Unknown function: {function_name}"}
 
 
 # Initialize Discord Bot
@@ -561,9 +721,16 @@ async def on_message(message):
                 response_text = await bot.ask_gemini(
                     message.channel.id,
                     prompt,
-                    images=images if images else None
+                    images=images if images else None,
+                    user_id=message.author.id,
                 )
-                await bot.send_response(message.channel, response_text)
+
+                # Prepend current mode indicator to response
+                tool_mode = bot.get_tool_mode(message.channel.id)
+                mode_indicator = f"[{tool_mode}] "
+                display_text = mode_indicator + response_text
+
+                await bot.send_response(message.channel, display_text)
             except Exception as e:
                 await message.channel.send(f"An error occurred: {e}")
 
