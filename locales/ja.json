@@ -153,5 +153,8 @@
   "mode_changed": "ツールモードを `{mode}` に切り替えました。",
   "mode_calendar_not_linked": "カレンダーモードを使用するには、先に `!google link` でGoogleアカウントを連携してください。",
   "mode_todo_not_linked": "Todoモードを使用するには、先に `!google link` でGoogleアカウントを連携してください。",
-  "help_command_todo": "Todoモード（Google Tasks）に切り替えます。"
+  "help_command_todo": "Todoモード（Google Tasks）に切り替えます。",
+  "mode_instruction_todo": "[TODO MODE] あなたはGoogle Tasksを使ってユーザーのタスクを管理するアシスタントです。ユーザーがタスク、TODO、やることリストについて質問したり、タスクの追加・完了・削除・一覧表示を依頼した場合は、必ず提供されたGoogle Tasks関数（list_tasks, create_task, complete_task, delete_task等）を使用してください。通常のテキスト応答ではなく、必ずツールを呼び出してください。",
+  "mode_instruction_calendar": "[CALENDAR MODE] あなたはGoogle Calendarを使ってユーザーの予定を管理するアシスタントです。ユーザーが予定、スケジュール、カレンダーについて質問したり、予定の追加・変更・削除・確認を依頼した場合は、必ず提供されたGoogle Calendar関数を使用してください。",
+  "image_default_prompt": "この画像について説明してください。"
 }

@@ -414,22 +414,25 @@ class GeminiBot(commands.Bot):
             # Default: Google Search
             return [types.Tool(google_search=types.GoogleSearch())]
 
-    # Mode-specific system prompt instructions
-    _MODE_INSTRUCTIONS = {
-        "todo": (
-            "\n\n[TODO MODE] あなたはGoogle Tasksを使ってユーザーのタスクを管理する"
-            "アシスタントです。ユーザーがタスク、TODO、やることリストについて質問したり、"
-            "タスクの追加・完了・削除・一覧表示を依頼した場合は、必ず提供された"
-            "Google Tasks関数（list_tasks, create_task, complete_task, delete_task等）を"
-            "使用してください。通常のテキスト応答ではなく、必ずツールを呼び出してください。"
-        ),
-        "calendar": (
-            "\n\n[CALENDAR MODE] あなたはGoogle Calendarを使ってユーザーの予定を管理する"
-            "アシスタントです。ユーザーが予定、スケジュール、カレンダーについて質問したり、"
-            "予定の追加・変更・削除・確認を依頼した場合は、必ず提供された"
-            "Google Calendar関数を使用してください。"
-        ),
+    # Mode-specific system prompt instruction keys (mapped to i18n keys)
+    _MODE_INSTRUCTION_KEYS = {
+        "todo": "mode_instruction_todo",
+        "calendar": "mode_instruction_calendar",
     }
+
+    def _get_mode_instruction(self, mode: str) -> str:
+        """Get localized mode instruction for the given tool mode.
+
+        Args:
+            mode: Tool mode name ("todo", "calendar", etc.)
+
+        Returns:
+            Localized mode instruction string, or empty string if not applicable.
+        """
+        i18n_key = self._MODE_INSTRUCTION_KEYS.get(mode)
+        if i18n_key:
+            return "\n\n" + self.i18n.t(i18n_key)
+        return ""
 
     def _build_system_prompt(self, channel_id: int) -> str:
         """Build the system prompt with mode-specific instructions.
@@ -444,7 +447,7 @@ class GeminiBot(commands.Bot):
         tool_mode = self.get_tool_mode(channel_id)
 
         # Add mode-specific instruction if applicable
-        mode_instruction = self._MODE_INSTRUCTIONS.get(tool_mode, "")
+        mode_instruction = self._get_mode_instruction(tool_mode)
         if mode_instruction:
             return (base_prompt + mode_instruction) if base_prompt else mode_instruction
 
@@ -913,7 +916,7 @@ async def _handle_auto_response(message) -> None:
                         print(f"Failed to download image {attachment.filename}: {e}")
 
             # Use message content or default prompt if only images
-            prompt = message.content if message.content else "この画像について説明してください。"
+            prompt = message.content if message.content else bot.i18n.t("image_default_prompt")
 
             response_text = await bot.ask_gemini(
                 message.channel.id,

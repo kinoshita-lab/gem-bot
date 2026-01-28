@@ -153,5 +153,8 @@
   "mode_changed": "Tool mode changed to `{mode}`.",
   "mode_calendar_not_linked": "To use Calendar mode, please link your Google account first with `!google link`.",
   "mode_todo_not_linked": "To use Todo mode, please link your Google account first with `!google link`.",
-  "help_command_todo": "Switch to Todo mode (Google Tasks)."
+  "help_command_todo": "Switch to Todo mode (Google Tasks).",
+  "mode_instruction_todo": "[TODO MODE] You are an assistant that manages user tasks using Google Tasks. When users ask about tasks, TODOs, or to-do lists, or request to add, complete, delete, or list tasks, always use the provided Google Tasks functions (list_tasks, create_task, complete_task, delete_task, etc.). Always call the tools instead of responding with plain text.",
+  "mode_instruction_calendar": "[CALENDAR MODE] You are an assistant that manages user schedules using Google Calendar. When users ask about events, schedules, or calendar, or request to add, modify, delete, or check events, always use the provided Google Calendar functions.",
+  "image_default_prompt": "Please describe this image."
 }
