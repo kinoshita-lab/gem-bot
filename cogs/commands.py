@@ -643,6 +643,27 @@ class Commands(commands.Cog):
         except Exception as e:
             await ctx.send(self.t("prompt_error", error=e))
 
+    @prompt.command(name="append")
+    async def prompt_append(self, ctx: commands.Context, *, content: str | None = None):
+        """Append text to the system prompt."""
+        if content is None:
+            await ctx.send(self.t("prompt_append_usage"))
+            return
+
+        channel_id = ctx.channel.id
+
+        try:
+            current = self.bot.history_manager.load_system_prompt(channel_id)
+            # Append with newline if current content exists
+            if current.strip():
+                new_content = current + "\n" + content
+            else:
+                new_content = content
+            self.bot.history_manager.save_system_prompt(channel_id, new_content)
+            await ctx.send(self.t("prompt_append_success"))
+        except Exception as e:
+            await ctx.send(self.t("prompt_error", error=e))
+
     @prompt.command(name="download")
     async def prompt_download(self, ctx: commands.Context):
         """Download the current system prompt as a file."""
