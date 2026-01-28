@@ -194,6 +194,9 @@ class GeminiBot(commands.Bot):
         # Pending model selections: user_id -> {channel_id, models}
         self.pending_model_selections: dict[int, dict] = {}
 
+        # Pending delete confirmations: user_id -> {channel_id, indices}
+        self.pending_delete_confirmations: dict[int, dict] = {}
+
         # Conversation history per channel
         self.conversation_history: dict[int, list] = {}
 
@@ -438,6 +441,35 @@ async def on_message(message):
         # Invalid input - prompt again
         await message.channel.send(bot.i18n.t("model_select_prompt"))
         return
+
+    # Check if this user has a pending delete confirmation
+    if user_id in bot.pending_delete_confirmations:
+        content = message.content.strip().lower()
+        pending = bot.pending_delete_confirmations[user_id]
+        channel_id = pending["channel_id"]
+
+        # Only process if in the same channel
+        if message.channel.id == channel_id:
+            del bot.pending_delete_confirmations[user_id]
+
+            if content == "yes":
+                # Perform deletion
+                indices = sorted(pending["indices"], reverse=True)
+                history = bot.conversation_history.get(channel_id, [])
+
+                for idx in indices:
+                    if 0 <= idx < len(history):
+                        history.pop(idx)
+
+                # Save updated history
+                bot._save_history_to_disk(channel_id)
+
+                await message.channel.send(
+                    bot.i18n.t("history_delete_success", count=len(pending["indices"]))
+                )
+            else:
+                await message.channel.send(bot.i18n.t("history_delete_cancelled"))
+            return
 
     # Check if the message is a command (starts with prefix)
     if message.content.startswith(bot.command_prefix):

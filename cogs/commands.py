@@ -210,6 +210,137 @@ class Commands(commands.Cog):
         if ctx.invoked_subcommand is None:
             await ctx.send(self.t("history_usage"))
 
+    @history.command(name="list")
+    async def history_list(self, ctx: commands.Context, count: int = 10):
+        """List conversation history with message numbers."""
+        channel_id = ctx.channel.id
+
+        try:
+            history = self.bot.conversation_history.get(channel_id, [])
+
+            if not history:
+                await ctx.send(self.t("history_list_empty"))
+                return
+
+            total = len(history)
+            # Limit count to reasonable range
+            count = max(1, min(count, 50))
+            # Show last N messages
+            start_index = max(0, total - count)
+            shown_messages = history[start_index:]
+
+            embed = discord.Embed(
+                title=self.t("history_list_title"),
+                color=discord.Color.blue(),
+            )
+
+            # Build message list
+            lines = []
+            for i, msg in enumerate(shown_messages):
+                actual_index = start_index + i + 1  # 1-based index
+                role = msg.role.upper()
+                # Get text content from parts
+                content = ""
+                if msg.parts:
+                    for part in msg.parts:
+                        if hasattr(part, "text") and part.text:
+                            content = part.text
+                            break
+                # Truncate long messages
+                preview = content[:50] + "..." if len(content) > 50 else content
+                # Replace newlines with spaces for cleaner display
+                preview = preview.replace("\n", " ")
+                lines.append(f"`{actual_index}`. [{role}] {preview}")
+
+            # Split into multiple fields if too long
+            chunk_size = 10
+            for i in range(0, len(lines), chunk_size):
+                chunk = lines[i : i + chunk_size]
+                field_name = (
+                    self.t("history_list_title")
+                    if i == 0
+                    else f"{self.t('history_list_title')} ({i // chunk_size + 1})"
+                )
+                embed.add_field(
+                    name=field_name if i > 0 else "\u200b",  # Zero-width space for first
+                    value="\n".join(chunk),
+                    inline=False,
+                )
+
+            embed.set_footer(
+                text=self.t("history_list_footer", shown=len(shown_messages), total=total)
+            )
+            await ctx.send(embed=embed)
+        except Exception as e:
+            await ctx.send(self.t("history_error", error=e))
+
+    @history.command(name="delete")
+    async def history_delete(self, ctx: commands.Context, index: int | None = None):
+        """Delete a message and its pair from history."""
+        if index is None:
+            await ctx.send(self.t("history_delete_usage"))
+            return
+
+        channel_id = ctx.channel.id
+        user_id = ctx.author.id
+
+        try:
+            history = self.bot.conversation_history.get(channel_id, [])
+
+            if not history:
+                await ctx.send(self.t("history_list_empty"))
+                return
+
+            # Convert to 0-based index
+            idx = index - 1
+
+            if idx < 0 or idx >= len(history):
+                await ctx.send(self.t("history_delete_not_found", index=index))
+                return
+
+            # Determine which messages to delete (pair deletion)
+            target_msg = history[idx]
+            indices_to_delete = [idx]
+
+            if target_msg.role == "user":
+                # If user message, also delete next model response if exists
+                if idx + 1 < len(history) and history[idx + 1].role == "model":
+                    indices_to_delete.append(idx + 1)
+            elif target_msg.role == "model":
+                # If model message, also delete previous user message if exists
+                if idx - 1 >= 0 and history[idx - 1].role == "user":
+                    indices_to_delete.insert(0, idx - 1)
+
+            # Build confirmation message
+            messages_preview = []
+            for i in sorted(indices_to_delete):
+                msg = history[i]
+                role = msg.role.upper()
+                content = ""
+                if msg.parts:
+                    for part in msg.parts:
+                        if hasattr(part, "text") and part.text:
+                            content = part.text
+                            break
+                preview = content[:100] + "..." if len(content) > 100 else content
+                preview = preview.replace("\n", " ")
+                messages_preview.append(f"`{i + 1}`. [{role}] {preview}")
+
+            # Register pending confirmation
+            self.bot.pending_delete_confirmations[user_id] = {
+                "channel_id": channel_id,
+                "indices": indices_to_delete,
+            }
+
+            await ctx.send(
+                self.t(
+                    "history_delete_confirm",
+                    messages="\n".join(messages_preview),
+                )
+            )
+        except Exception as e:
+            await ctx.send(self.t("history_error", error=e))
+
     @history.command(name="clear")
     async def history_clear(self, ctx: commands.Context):
         """Clear all conversation history for this channel."""
