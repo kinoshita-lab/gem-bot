@@ -6,6 +6,8 @@ import discord
 from discord.ext import commands
 from google.genai import types
 
+from calendar_manager import CalendarAuthManager
+
 
 class Commands(commands.Cog):
     """All bot commands."""
@@ -867,6 +869,169 @@ class Commands(commands.Cog):
                 await ctx.send(self.t("config_reset_all"))
         except Exception as e:
             await ctx.send(self.t("config_error", error=e))
+
+
+    def _get_calendar_auth(self) -> CalendarAuthManager | None:
+        """Get the calendar auth manager from bot, or None if not available."""
+        if hasattr(self.bot, "calendar_auth") and self.bot.calendar_auth is not None:
+            return self.bot.calendar_auth
+        return None
+
+    async def _send_calendar_setup_guide(self, ctx: commands.Context) -> None:
+        """Send a helpful setup guide when credentials.json is missing or invalid."""
+        # Create a temporary manager just to check configuration status
+        temp_manager = CalendarAuthManager()
+        config_status = temp_manager.get_configuration_status()
+
+        error_code = config_status.get("error_code", "unknown")
+        setup_url = config_status.get("setup_url", "https://console.cloud.google.com/apis/credentials")
+
+        # Build embed with setup instructions
+        embed = discord.Embed(
+            title=self.t("calendar_setup_required_title"),
+            color=discord.Color.orange(),
+        )
+
+        # Error-specific message
+        if error_code == "file_not_found":
+            embed.description = self.t("calendar_setup_file_not_found")
+        elif error_code == "invalid_json":
+            embed.description = self.t("calendar_setup_invalid_json")
+        elif error_code == "missing_installed":
+            embed.description = self.t("calendar_setup_wrong_format")
+        elif error_code in ("missing_client_id", "missing_client_secret"):
+            embed.description = self.t("calendar_setup_missing_fields")
+        else:
+            embed.description = self.t("calendar_setup_unknown_error", message=config_status.get("message", ""))
+
+        # Add setup steps
+        embed.add_field(
+            name=self.t("calendar_setup_steps_title"),
+            value=self.t("calendar_setup_steps"),
+            inline=False,
+        )
+
+        # Add link to Google Cloud Console
+        embed.add_field(
+            name=self.t("calendar_setup_link_title"),
+            value=setup_url,
+            inline=False,
+        )
+
+        await ctx.send(embed=embed)
+
+    @commands.group(name="calendar")
+    async def calendar(self, ctx: commands.Context):
+        """Google Calendar integration commands."""
+        if ctx.invoked_subcommand is None:
+            await self._handle_invalid_subcommand(ctx, "calendar_usage")
+
+    @calendar.command(name="link")
+    async def calendar_link(self, ctx: commands.Context):
+        """Link your Google account for Calendar access."""
+        user_id = ctx.author.id
+
+        calendar_auth = self._get_calendar_auth()
+
+        # Check if calendar manager is available and configured
+        if calendar_auth is None:
+            await self._send_calendar_setup_guide(ctx)
+            return
+
+        # Check if credentials.json is valid
+        if not calendar_auth.is_credentials_configured():
+            await self._send_calendar_setup_guide(ctx)
+            return
+
+        # Check if already authenticated
+        if calendar_auth.is_user_authenticated(user_id):
+            await ctx.send(self.t("calendar_already_linked"))
+            return
+
+        try:
+            # Start OAuth flow
+            auth_url, future = await calendar_auth.start_auth_flow(user_id)
+
+            # Send DM with auth URL for privacy
+            try:
+                dm_channel = await ctx.author.create_dm()
+                await dm_channel.send(self.t("calendar_link_dm", url=auth_url))
+                await ctx.send(self.t("calendar_link_check_dm"))
+            except discord.Forbidden:
+                # Can't DM user, send in channel (less secure but functional)
+                await ctx.send(self.t("calendar_link_url", url=auth_url))
+
+            # Wait for auth to complete (with timeout)
+            try:
+                await future
+                await ctx.send(self.t("calendar_link_success", user=ctx.author.mention))
+            except TimeoutError:
+                await ctx.send(self.t("calendar_link_timeout"))
+            except Exception as e:
+                await ctx.send(self.t("calendar_link_error", error=str(e)))
+
+        except FileNotFoundError:
+            await self._send_calendar_setup_guide(ctx)
+        except Exception as e:
+            await ctx.send(self.t("calendar_error", error=str(e)))
+
+    @calendar.command(name="unlink")
+    async def calendar_unlink(self, ctx: commands.Context):
+        """Unlink your Google account."""
+        user_id = ctx.author.id
+
+        calendar_auth = self._get_calendar_auth()
+
+        if calendar_auth is None:
+            await self._send_calendar_setup_guide(ctx)
+            return
+
+        if calendar_auth.revoke_user(user_id):
+            await ctx.send(self.t("calendar_unlink_success"))
+        else:
+            await ctx.send(self.t("calendar_not_linked"))
+
+    @calendar.command(name="status")
+    async def calendar_status(self, ctx: commands.Context):
+        """Check your Google Calendar connection status."""
+        user_id = ctx.author.id
+
+        calendar_auth = self._get_calendar_auth()
+
+        # If not configured, show setup guide
+        if calendar_auth is None:
+            await self._send_calendar_setup_guide(ctx)
+            return
+
+        # Check if credentials.json is valid
+        if not calendar_auth.is_credentials_configured():
+            await self._send_calendar_setup_guide(ctx)
+            return
+
+        status = calendar_auth.get_auth_status(user_id)
+
+        if status["authenticated"]:
+            embed = discord.Embed(
+                title=self.t("calendar_status_title"),
+                description=self.t("calendar_status_connected"),
+                color=discord.Color.green(),
+            )
+        else:
+            embed = discord.Embed(
+                title=self.t("calendar_status_title"),
+                description=self.t(
+                    "calendar_status_not_connected",
+                    reason=status.get("message", ""),
+                ),
+                color=discord.Color.orange(),
+            )
+            embed.add_field(
+                name=self.t("calendar_status_hint_title"),
+                value=self.t("calendar_status_hint"),
+                inline=False,
+            )
+
+        await ctx.send(embed=embed)
 
 
 async def setup(bot: commands.Bot):

@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from history_manager import HistoryManager
 from i18n import I18nManager
+from calendar_manager import CalendarAuthManager
 
 
 class LocalizedHelpCommand(commands.DefaultHelpCommand):
@@ -19,6 +20,7 @@ class LocalizedHelpCommand(commands.DefaultHelpCommand):
         "conversation": ["model", "prompt", "config"],
         "history": ["history", "branch"],
         "tools": ["image"],
+        "integrations": ["calendar"],
     }
 
     def t(self, key: str, **kwargs) -> str:
@@ -205,6 +207,18 @@ class GeminiBot(commands.Bot):
 
         # I18n manager for translations
         self.i18n = I18nManager()
+
+        # Calendar auth manager (optional, only if credentials.json exists)
+        self.calendar_auth: CalendarAuthManager | None = None
+        try:
+            calendar_auth = CalendarAuthManager()
+            if calendar_auth.is_credentials_configured():
+                self.calendar_auth = calendar_auth
+                print("Google Calendar integration enabled")
+            else:
+                print("Google Calendar integration disabled (credentials.json not found)")
+        except Exception as e:
+            print(f"Google Calendar integration disabled: {e}")
 
     async def setup_hook(self):
         """Load cogs when the bot starts."""

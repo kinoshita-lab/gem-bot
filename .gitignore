@@ -12,3 +12,7 @@ wheels/
 
 # Conversation history (separate Git repository)
 history/
+
+# Google OAuth credentials (NEVER commit these)
+credentials.json
+client_secret*.json
