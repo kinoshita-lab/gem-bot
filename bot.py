@@ -416,6 +416,7 @@ class GeminiBot(commands.Bot):
 
     # Mode-specific system prompt instruction keys (mapped to i18n keys)
     _MODE_INSTRUCTION_KEYS = {
+        "default": "mode_instruction_default",
         "todo": "mode_instruction_todo",
         "calendar": "mode_instruction_calendar",
     }
@@ -452,6 +453,78 @@ class GeminiBot(commands.Bot):
             return (base_prompt + mode_instruction) if base_prompt else mode_instruction
 
         return base_prompt
+
+    def _extract_grounding_sources(self, response) -> list[dict]:
+        """Extract source URLs and titles from grounding metadata.
+
+        Args:
+            response: Gemini API response.
+
+        Returns:
+            List of source dictionaries with 'uri' and 'title' keys.
+        """
+        sources = []
+
+        # Early return if no candidates
+        if not response.candidates:
+            return sources
+
+        candidate = response.candidates[0]
+
+        # Check for grounding_metadata
+        if not hasattr(candidate, "grounding_metadata") or not candidate.grounding_metadata:
+            return sources
+
+        grounding_metadata = candidate.grounding_metadata
+
+        # Extract from grounding_chunks (contains web sources)
+        if hasattr(grounding_metadata, "grounding_chunks") and grounding_metadata.grounding_chunks:
+            for chunk in grounding_metadata.grounding_chunks:
+                if hasattr(chunk, "web") and chunk.web:
+                    web = chunk.web
+                    source = {}
+                    if hasattr(web, "uri") and web.uri:
+                        source["uri"] = web.uri
+                    if hasattr(web, "title") and web.title:
+                        source["title"] = web.title
+                    if source.get("uri"):
+                        sources.append(source)
+
+        # Deduplicate by URI while preserving order
+        seen_uris = set()
+        unique_sources = []
+        for source in sources:
+            uri = source.get("uri")
+            if uri and uri not in seen_uris:
+                seen_uris.add(uri)
+                unique_sources.append(source)
+
+        return unique_sources
+
+    def _format_grounding_sources(self, sources: list[dict]) -> str:
+        """Format grounding sources as a reference section.
+
+        Args:
+            sources: List of source dictionaries with 'uri' and 'title' keys.
+
+        Returns:
+            Formatted reference section string, or empty string if no sources.
+        """
+        if not sources:
+            return ""
+
+        header = self.i18n.t("grounding_sources_header")
+        lines = [header]
+
+        for source in sources:
+            uri = source.get("uri", "")
+            title = source.get("title", "")
+            if title:
+                lines.append(f"- [{title}]({uri})")
+            else:
+                lines.append(f"- {uri}")
+
+        return "\n".join(lines)
 
     async def ask_gemini(
         self,
@@ -502,7 +575,14 @@ class GeminiBot(commands.Bot):
                     response, channel_id, model, config_params, user_id
                 )
             else:
+                # Default mode: extract response text and append grounding sources
                 response_text = response.text or ""
+
+                # Extract and append grounding sources for default (search) mode
+                grounding_sources = self._extract_grounding_sources(response)
+                if grounding_sources:
+                    sources_text = self._format_grounding_sources(grounding_sources)
+                    response_text = response_text + sources_text
 
             # Add model's response to history
             self.conversation_history[channel_id].append(
