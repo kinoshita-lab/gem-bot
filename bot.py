@@ -205,11 +205,11 @@ class GeminiBot(commands.Bot):
         # Conversation history per channel
         self.conversation_history: dict[int, list] = {}
 
-        # History manager for Git-based persistence
-        self.history_manager = HistoryManager()
-
-        # I18n manager for translations
+        # I18n manager for translations (must be initialized before HistoryManager)
         self.i18n = I18nManager()
+
+        # History manager for Git-based persistence
+        self.history_manager = HistoryManager(i18n=self.i18n)
 
         # Calendar auth manager (optional, only if credentials.json exists)
         self.calendar_auth: CalendarAuthManager | None = None

@@ -213,5 +213,15 @@
   "calendar_events_empty": "No events found.",
   "calendar_created": "Created event \"{summary}\".",
   "calendar_updated": "Updated event \"{summary}\".",
-  "calendar_deleted": "Event deleted."
+  "calendar_deleted": "Event deleted.",
+
+  "history_branch_already_exists": "Branch '{branch}' already exists",
+  "history_cannot_delete_main": "Cannot delete main branch",
+  "history_cannot_delete_current": "Cannot delete current branch",
+  "history_branch_not_found": "Branch '{branch}' not found",
+  "history_cannot_merge_current": "Cannot merge into current branch",
+  "history_config_invalid_key": "Invalid key: {key}. Valid keys: {valid_keys}",
+  "history_config_invalid_type": "{key} must be of type {type_name}",
+  "history_config_min_value": "{key} must be at least {min}",
+  "history_config_max_value": "{key} must be at most {max}"
 }

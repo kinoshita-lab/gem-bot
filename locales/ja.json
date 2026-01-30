@@ -213,5 +213,15 @@
   "calendar_events_empty": "予定はありません。",
   "calendar_created": "予定「{summary}」を作成しました。",
   "calendar_updated": "予定「{summary}」を更新しました。",
-  "calendar_deleted": "予定を削除しました。"
+  "calendar_deleted": "予定を削除しました。",
+
+  "history_branch_already_exists": "ブランチ '{branch}' は既に存在します",
+  "history_cannot_delete_main": "mainブランチは削除できません",
+  "history_cannot_delete_current": "現在のブランチは削除できません",
+  "history_branch_not_found": "ブランチ '{branch}' が見つかりません",
+  "history_cannot_merge_current": "現在のブランチにはマージできません",
+  "history_config_invalid_key": "無効なキー: {key}。有効なキー: {valid_keys}",
+  "history_config_invalid_type": "{key} は {type_name} 型である必要があります",
+  "history_config_min_value": "{key} は {min} 以上である必要があります",
+  "history_config_max_value": "{key} は {max} 以下である必要があります"
 }

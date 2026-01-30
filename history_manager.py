@@ -7,11 +7,16 @@ branch/merge/fork operations for AI chat histories.
 Each channel has its own independent Git repository.
 """
 
+from __future__ import annotations
+
 import json
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from i18n import I18nManager
 
 
 class HistoryManager:
@@ -20,14 +25,25 @@ class HistoryManager:
     Each channel has its own Git repository at `base_dir/{channel_id}/`.
     """
 
-    def __init__(self, base_dir: str = "history"):
+    def __init__(self, base_dir: str = "history", i18n: I18nManager | None = None):
         """Initialize the HistoryManager.
 
         Args:
             base_dir: Base directory for all channel repositories.
+            i18n: I18nManager instance for translations (optional for backward compatibility).
         """
         self.base_dir = Path(base_dir).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        self.i18n = i18n
+
+    def t(self, key: str, **kwargs) -> str:
+        """Get translated string.
+
+        Falls back to key if i18n is not available.
+        """
+        if self.i18n:
+            return self.i18n.t(key, **kwargs)
+        return key
 
     def _get_repo_path(self, channel_id: int) -> Path:
         """Get the repository path for a channel.
@@ -339,7 +355,7 @@ class HistoryManager:
         # Check if branch already exists
         existing = self.list_branches(channel_id)
         if branch_name in existing:
-            raise RuntimeError(f"ブランチ '{branch_name}' は既に存在します")
+            raise RuntimeError(self.t("history_branch_already_exists", branch=branch_name))
 
         self._git(channel_id, "branch", branch_name)
 
@@ -372,17 +388,17 @@ class HistoryManager:
 
         # Prevent deleting main branch
         if branch_name == "main":
-            raise RuntimeError("mainブランチは削除できません")
+            raise RuntimeError(self.t("history_cannot_delete_main"))
 
         # Prevent deleting current branch
         current = self.get_current_branch(channel_id)
         if branch_name == current:
-            raise RuntimeError("現在のブランチは削除できません")
+            raise RuntimeError(self.t("history_cannot_delete_current"))
 
         # Check if branch exists
         branches = self.list_branches(channel_id)
         if branch_name not in branches:
-            raise RuntimeError(f"ブランチ '{branch_name}' が見つかりません")
+            raise RuntimeError(self.t("history_branch_not_found", branch=branch_name))
 
         # Force delete the branch
         self._git(channel_id, "branch", "-D", branch_name)
@@ -409,11 +425,11 @@ class HistoryManager:
 
         current_branch = self.get_current_branch(channel_id)
         if source_branch == current_branch:
-            raise RuntimeError("現在のブランチにはマージできません")
+            raise RuntimeError(self.t("history_cannot_merge_current"))
 
         branches = self.list_branches(channel_id)
         if source_branch not in branches:
-            raise RuntimeError(f"ブランチ '{source_branch}' が見つかりません")
+            raise RuntimeError(self.t("history_branch_not_found", branch=source_branch))
 
         # Load current branch messages
         current_data = self.load_conversation(channel_id)
@@ -760,7 +776,7 @@ class HistoryManager:
         """
         if key not in self.GENERATION_CONFIG_SCHEMA:
             valid_keys = ", ".join(self.GENERATION_CONFIG_SCHEMA.keys())
-            raise ValueError(f"無効なキー: {key}。有効なキー: {valid_keys}")
+            raise ValueError(self.t("history_config_invalid_key", key=key, valid_keys=valid_keys))
 
         schema = self.GENERATION_CONFIG_SCHEMA[key]
         expected_type = schema["type"]
@@ -773,14 +789,14 @@ class HistoryManager:
                 value = int(value)
         except (ValueError, TypeError):
             raise ValueError(
-                f"{key} は {expected_type.__name__} 型である必要があります"
+                self.t("history_config_invalid_type", key=key, type_name=expected_type.__name__)
             )
 
         # Range validation
         if "min" in schema and value < schema["min"]:
-            raise ValueError(f"{key} は {schema['min']} 以上である必要があります")
+            raise ValueError(self.t("history_config_min_value", key=key, min=schema["min"]))
         if "max" in schema and value > schema["max"]:
-            raise ValueError(f"{key} は {schema['max']} 以下である必要があります")
+            raise ValueError(self.t("history_config_max_value", key=key, max=schema["max"]))
 
         config = self._load_global_config()
 
