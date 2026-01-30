@@ -20,6 +20,7 @@ Discord上でGemini APIを使用してAIと会話できるボットです。
 - **i18n support** - Multi-language support (Japanese/English by default, extensible)
 - **Google Calendar integration** - Manage calendar events through natural language
 - **Google Tasks integration** - Manage TODO lists through natural language
+- **LaTeX formula rendering** - Automatically render mathematical formulas as images
 
 ## 機能
 
@@ -35,6 +36,7 @@ Discord上でGemini APIを使用してAIと会話できるボットです。
 - **多言語対応** - 日本語/英語（拡張可能）
 - **Googleカレンダー連携** - 自然言語でカレンダーイベントを管理
 - **Google Tasks連携** - 自然言語でTODOリストを管理
+- **LaTeX数式レンダリング** - 数式を自動的に画像としてレンダリング
 
 ---
 
@@ -75,6 +77,42 @@ After installation, configure your identity:
 ```bash
 git config --global user.name "Your Name"
 git config --global user.email "your.email@example.com"
+```
+
+### Install LaTeX (Optional - for formula rendering)
+
+LaTeX is required for rendering mathematical formulas as images. If not installed, the bot will still work but formulas will only be shown as text.
+
+**Windows:**
+1. Download and install [MiKTeX](https://miktex.org/download)
+2. During installation, select "Install missing packages on-the-fly: Yes"
+3. After installation, open MiKTeX Console and install the `standalone` package
+
+**macOS:**
+```bash
+# Using Homebrew
+brew install --cask mactex-no-gui
+
+# Or install BasicTeX (smaller, ~100MB)
+brew install --cask basictex
+# Then install required packages
+sudo tlmgr update --self
+sudo tlmgr install standalone preview dvipng
+```
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt install texlive-latex-extra dvipng
+```
+
+**Linux (Fedora/RHEL):**
+```bash
+sudo dnf install texlive-standalone texlive-preview dvipng
+```
+
+**Linux (Arch):**
+```bash
+sudo pacman -S texlive-latexextra
 ```
 
 ### Get Gemini API Key
@@ -181,6 +219,42 @@ sudo apt install git
 ```bash
 git config --global user.name "Your Name"
 git config --global user.email "your.email@example.com"
+```
+
+### LaTeX のインストール（オプション - 数式レンダリング用）
+
+数式を画像としてレンダリングするには LaTeX が必要です。インストールしなくてもボットは動作しますが、数式はテキストのみで表示されます。
+
+**Windows:**
+1. [MiKTeX](https://miktex.org/download) をダウンロードしてインストール
+2. インストール中に「Install missing packages on-the-fly: Yes」を選択
+3. インストール後、MiKTeX Console を開いて `standalone` パッケージをインストール
+
+**macOS:**
+```bash
+# Homebrew を使用
+brew install --cask mactex-no-gui
+
+# または BasicTeX（小さい、約100MB）
+brew install --cask basictex
+# 必要なパッケージをインストール
+sudo tlmgr update --self
+sudo tlmgr install standalone preview dvipng
+```
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt install texlive-latex-extra dvipng
+```
+
+**Linux (Fedora/RHEL):**
+```bash
+sudo dnf install texlive-standalone texlive-preview dvipng
+```
+
+**Linux (Arch):**
+```bash
+sudo pacman -S texlive-latexextra
 ```
 
 ### Gemini API キーの取得
@@ -696,6 +770,7 @@ gem-bot/                    # Repository root
 │   └── commands.py         # Discord commands
 ├── history_manager.py      # Git-based history management
 ├── i18n.py                 # Internationalization
+├── latex_renderer.py       # LaTeX formula rendering
 ├── calendar_manager.py     # Google Calendar/Tasks OAuth & API
 ├── calendar_tools.py       # Gemini Calendar function declarations
 ├── tasks_tools.py          # Gemini Tasks function declarations

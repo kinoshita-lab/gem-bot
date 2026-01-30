@@ -45,7 +45,7 @@ uv sync
 uv run python bot.py
 
 # Syntax check all Python files
-python -m py_compile bot.py cogs/commands.py history_manager.py i18n.py calendar_manager.py calendar_tools.py tasks_tools.py
+python -m py_compile bot.py cogs/commands.py history_manager.py i18n.py latex_renderer.py calendar_manager.py calendar_tools.py tasks_tools.py
 
 # Type checking (if mypy is added)
 uv run mypy bot.py
@@ -66,6 +66,7 @@ gem-bot/
 │   └── commands.py         # Discord commands (Cog)
 ├── history_manager.py      # Git-based history management
 ├── i18n.py                 # Internationalization
+├── latex_renderer.py       # LaTeX formula rendering to PNG
 ├── calendar_manager.py     # Google Calendar/Tasks OAuth & API
 ├── calendar_tools.py       # Gemini Calendar function declarations
 ├── tasks_tools.py          # Gemini Tasks function declarations
@@ -231,3 +232,39 @@ def t(self, key: str, **kwargs) -> str:
 | `DISCORD_BOT_TOKEN` | Yes | Discord Bot token |
 | `GEMINI_API_KEY` | Yes | Gemini API key |
 | `GEMINI_CHANNEL_ID` | Yes | Auto-response channel IDs (comma-separated) |
+
+## External Dependencies
+
+### LaTeX (Optional)
+
+LaTeX is required for rendering mathematical formulas as images. The bot uses `latex` and `dvipng` commands.
+
+**Installation:**
+
+**Windows:**
+- Install [MiKTeX](https://miktex.org/download)
+- Enable "Install missing packages on-the-fly"
+
+**macOS:**
+```bash
+brew install --cask mactex-no-gui
+# Or for smaller install:
+brew install --cask basictex && sudo tlmgr install standalone preview dvipng
+```
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt install texlive-latex-extra dvipng
+```
+
+**Linux (Fedora/RHEL):**
+```bash
+sudo dnf install texlive-standalone texlive-preview dvipng
+```
+
+**Linux (Arch):**
+```bash
+sudo pacman -S texlive-latexextra
+```
+
+If LaTeX is not installed, the bot will still work but formulas will only be displayed as text without rendered images.
