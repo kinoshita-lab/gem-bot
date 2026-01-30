@@ -1035,31 +1035,35 @@ class Commands(commands.Cog):
     async def mode(self, ctx: commands.Context):
         """Switch tool mode for this channel."""
         if ctx.invoked_subcommand is None:
-            # Show current mode and available modes
+            # Show interactive mode selection
             channel_id = ctx.channel.id
+            user_id = ctx.author.id
             current_mode = self.bot.get_tool_mode(channel_id)
 
+            # Register pending selection
+            # We want to map indices to mode keys: ["default", "calendar", "todo"]
+            mode_keys = list(self.TOOL_MODES.keys())
+            
+            self.bot.pending_tool_mode_selections[user_id] = {
+                "channel_id": channel_id,
+                "modes": mode_keys,
+            }
+
             embed = discord.Embed(
-                title=self.t("mode_title"),
+                title=self.t("mode_select_title"),
+                description=self.t("mode_select_description", mode=current_mode),
                 color=discord.Color.blue(),
             )
-            embed.add_field(
-                name=self.t("mode_current"),
-                value=f"`{current_mode}` - {self.TOOL_MODES.get(current_mode, '')}",
-                inline=False,
-            )
 
+            # Build numbered list
             modes_list = "\n".join(
-                f"`{mode}` - {desc}" for mode, desc in self.TOOL_MODES.items()
+                f"`{i + 1}`. {key} - {self.TOOL_MODES[key]}" + (" (current)" if key == current_mode else "")
+                for i, key in enumerate(mode_keys)
             )
+            
             embed.add_field(
                 name=self.t("mode_available"),
                 value=modes_list,
-                inline=False,
-            )
-            embed.add_field(
-                name=self.t("mode_usage_title"),
-                value=self.t("mode_usage"),
                 inline=False,
             )
 

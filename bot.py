@@ -212,6 +212,9 @@ class GeminiBot(commands.Bot):
         # Pending branch selections: user_id -> {channel_id, branches}
         self.pending_branch_selections: dict[int, dict] = {}
 
+        # Pending mode selections: user_id -> {channel_id, modes}
+        self.pending_tool_mode_selections: dict[int, dict] = {}
+
         # Pending delete confirmations: user_id -> {channel_id, indices}
         self.pending_delete_confirmations: dict[int, dict] = {}
 
@@ -1087,6 +1090,60 @@ async def _handle_branch_selection(message) -> bool:
     return True
 
 
+async def _handle_tool_mode_selection(message) -> bool:
+    """Handle pending tool mode selection interaction.
+
+    Args:
+        message: Discord message object.
+
+    Returns:
+        True if handled (should stop processing), False otherwise.
+    """
+    user_id = message.author.id
+    if user_id not in bot.pending_tool_mode_selections:
+        return False
+
+    content = message.content.strip().lower()
+
+    # Handle cancel
+    if content == "cancel":
+        del bot.pending_tool_mode_selections[user_id]
+        await message.channel.send(bot.i18n.t("mode_select_cancelled"))
+        return True
+
+    # Handle number selection
+    if content.isdigit():
+        index = int(content) - 1
+        modes = bot.pending_tool_mode_selections[user_id]["modes"]
+        channel_id = bot.pending_tool_mode_selections[user_id]["channel_id"]
+
+        if 0 <= index < len(modes):
+            selected_mode = modes[index]
+            
+            # Check authentication for calendar/todo
+            if selected_mode in ("calendar", "todo"):
+                if not bot.calendar_auth or not bot.calendar_auth.is_user_authenticated(user_id):
+                    key = f"mode_{selected_mode}_not_linked"
+                    await message.channel.send(bot.i18n.t(key))
+                    del bot.pending_tool_mode_selections[user_id]
+                    return True
+
+            bot.set_tool_mode(channel_id, selected_mode)
+            del bot.pending_tool_mode_selections[user_id]
+            await message.channel.send(
+                bot.i18n.t("mode_changed", mode=selected_mode)
+            )
+        else:
+            await message.channel.send(
+                bot.i18n.t("mode_select_invalid_number", max=len(modes))
+            )
+        return True
+
+    # Invalid input - prompt again
+    await message.channel.send(bot.i18n.t("mode_select_prompt"))
+    return True
+
+
 async def _handle_model_selection(message) -> bool:
     """Handle pending model selection interaction.
 
@@ -1237,6 +1294,10 @@ async def on_message(message):
 
     # Handle pending branch selection interaction
     if await _handle_branch_selection(message):
+        return
+
+    # Handle pending tool mode selection interaction
+    if await _handle_tool_mode_selection(message):
         return
 
     # Handle pending model selection interaction
