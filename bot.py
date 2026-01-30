@@ -432,7 +432,7 @@ class GeminiBot(commands.Bot):
         """
         i18n_key = self._MODE_INSTRUCTION_KEYS.get(mode)
         if i18n_key:
-            return "\n\n" + self.i18n.t(i18n_key)
+            return self.i18n.t(i18n_key)
         return ""
 
     def _build_system_prompt(self, channel_id: int) -> str:
@@ -450,7 +450,16 @@ class GeminiBot(commands.Bot):
         # Add mode-specific instruction if applicable
         mode_instruction = self._get_mode_instruction(tool_mode)
         if mode_instruction:
-            return (base_prompt + mode_instruction) if base_prompt else mode_instruction
+            if base_prompt:
+                # Structure with XML tags to clarify priority
+                return f"""<base-instructions>
+{base_prompt}
+</base-instructions>
+
+<priority-instructions>
+{mode_instruction}
+</priority-instructions>"""
+            return mode_instruction
 
         return base_prompt
 
