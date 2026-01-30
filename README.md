@@ -14,7 +14,7 @@ Discord上でGemini APIを使用してAIと会話できるボットです。
 - **Image generation** - Generate images from text prompts using Gemini
 - **Image analysis** - Upload images with messages for AI analysis
 - **Persistent history** - Conversation history is stored in Git repositories, surviving restarts and enabling version control
-- **Channel-specific system prompts** - Customize AI behavior per channel via Discord commands
+- **Two-level system prompts** - Global master instruction + per-channel customization for flexible AI behavior
 - **Generation config** - Customize temperature, top_p, and other parameters per channel
 - **Export to Markdown** - Export conversation history as Markdown files with images as ZIP
 - **i18n support** - Multi-language support (Japanese/English by default, extensible)
@@ -30,13 +30,419 @@ Discord上でGemini APIを使用してAIと会話できるボットです。
 - **画像生成** - テキストプロンプトから画像を生成
 - **画像分析** - メッセージと一緒に画像をアップロードしてAI分析
 - **永続的な履歴** - 会話履歴は Git リポジトリに保存され、再起動後も保持、バージョン管理が可能
-- **チャンネル別システムプロンプト** - Discordコマンドでチャンネルごとにカスタマイズ
+- **2階層システムプロンプト** - グローバルマスター指示書 + チャンネルごとのカスタマイズで柔軟なAI動作
 - **生成設定** - temperature、top_p などのパラメータをチャンネルごとに設定
 - **Markdownエクスポート** - 会話履歴をMarkdownファイルと画像をZIPでエクスポート
 - **多言語対応** - 日本語/英語（拡張可能）
 - **Googleカレンダー連携** - 自然言語でカレンダーイベントを管理
 - **Google Tasks連携** - 自然言語でTODOリストを管理
 - **LaTeX数式レンダリング** - 数式を自動的に画像としてレンダリング
+
+---
+
+## System Prompts
+
+The bot uses a two-level prompt system for flexible AI behavior customization:
+
+### Master Instruction (Global)
+
+The master instruction applies to **all channels** and defines the bot's base personality and behavior.
+
+**Location**: `GEMINI.md` in the project root (git-ignored, manually managed)
+
+**Management**:
+- **View**: `!system_prompt show` - Display the current master instruction
+- **Download**: `!system_prompt download` - Download as `GEMINI.md` file for editing
+- **Edit**: Upload a file named `GEMINI.md` to any channel to update
+
+**Example**:
+```
+You are a helpful and professional AI assistant specialized in software development.
+
+Guidelines:
+- Always provide clear, well-commented code examples
+- Explain technical concepts in simple terms
+- Be concise but thorough
+- Use markdown formatting for better readability
+```
+
+**Use cases**:
+- Define the bot's core personality (e.g., "You are a helpful coding assistant")
+- Set organization-wide guidelines or policies
+- Configure default response style and tone
+
+**Git management**: NOT version controlled (in `.gitignore`). Manage manually or with your own version control.
+
+### Channel Instruction (Per-channel)
+
+Each channel can have its own additional instruction that **extends** the master instruction.
+
+**Location**: `history/{channel_id}/channel_instruction.md` (git-managed per channel)
+
+**Management**:
+- **View**: `!channel_prompt show` - Display the current channel instruction
+- **Download**: `!channel_prompt download` - Download as `channel_instruction.md`
+- **Edit**: Upload a file named `channel_instruction.md` to the channel
+- **Clear**: `!channel_prompt clear` - Remove the channel instruction
+
+**Example** (for a Python-focused channel):
+```
+This channel is dedicated to Python programming discussions.
+
+Additional guidelines:
+- Focus on Python 3.10+ features and best practices
+- Recommend type hints and proper documentation
+- Suggest pytest for testing examples
+- Follow PEP 8 style guidelines
+```
+
+**Use cases**:
+- Add channel-specific context (e.g., "This channel is for Python discussions")
+- Override or extend behavior for specific use cases
+- Set temporary project-specific instructions
+
+**Git management**: Automatically committed with each change. See [Git Version Control](#git-version-control) for details.
+
+### How Prompts are Combined
+
+The final prompt sent to Gemini is constructed as:
+
+```
+[Master Instruction]
+
+[Channel Instruction]
+
+[User Message]
+```
+
+**Example**:
+- **Master**: "You are a helpful assistant. Always be concise."
+- **Channel** (in #python-help): "Focus on Python best practices. Provide code examples."
+- **Result**: The bot will be concise, helpful, and focus on Python with examples in the #python-help channel.
+
+**Note**: If no channel instruction is set, only the master instruction is used.
+
+---
+
+## Git Version Control
+
+### What is Managed by Git
+
+The bot automatically uses Git to version control **channel-specific data only**. Each channel has its own independent Git repository.
+
+#### Git-managed Files (Per Channel)
+
+Located in `history/{channel_id}/`:
+
+- **`conversation.json`** - Complete conversation history
+  - Committed after each message exchange
+  - Enables conversation branching and history tracking
+  
+- **`channel_instruction.md`** - Channel-specific instruction
+  - Committed when updated via file upload or `!channel_prompt clear`
+  - Allows reverting to previous instructions through branching
+  
+- **`files/`** - Image attachments
+  - Committed when images are uploaded in conversations
+  - Preserved across branches
+
+#### NOT Git-managed Files
+
+- **`GEMINI.md`** (project root) - Master instruction
+  - Excluded via `.gitignore`
+  - Reason: Allows flexible manual editing without Git overhead
+  - You can use your own version control separately if desired
+
+- **`history/config.json`** - Global bot configuration
+  - Contains channel models and generation settings
+  - Managed by bot commands (`!model`, `!config`)
+
+- **`history/tokens/`** - Google OAuth tokens
+  - Security: Should never be version controlled
+
+- **`.env`** - Environment variables (API keys, tokens)
+  - Security: Should never be version controlled
+
+- **`credentials.json`** - Google OAuth credentials
+  - Security: Should never be version controlled
+
+### Why This Design?
+
+**Channel-specific data (Git-managed)**:
+- Enables conversation branching with `!branch` commands
+- Provides complete history tracking with `!history` commands
+- Allows exporting conversations with full context
+- Each channel operates independently
+
+**Global/sensitive data (NOT Git-managed)**:
+- **`GEMINI.md`**: Designed for manual editing and sharing. You maintain it outside Git as needed.
+- **Configuration/secrets**: Security best practice - never commit credentials
+- **Global settings**: Automatically managed by the bot across all channels
+
+### Automatic Git Operations
+
+The bot automatically commits changes for:
+
+1. **Conversation updates**
+   - After each user message and bot response
+   - Commit message: `"Update conversation"`
+
+2. **Channel instruction changes**
+   - When uploading `channel_instruction.md`
+   - When using `!channel_prompt clear`
+   - Commit messages: `"Update channel instruction"`, `"Initialize empty channel instruction"`
+
+3. **Branch operations**
+   - Auto-saves before switching: `"Auto-save before branch switch"`
+   - Records merges: `"Merge branch 'branch-name'"`
+
+### Branch Workflow
+
+Each channel repository supports Git branching for conversation forking:
+
+**Use case**: You want to explore different approaches without losing your current conversation.
+
+```
+Main conversation (main branch)
+├─ Continue current discussion
+└─ Create branch "experiment" → Try alternative approach
+   ├─ If successful → Merge back to main
+   └─ If not → Switch back to main (experiment preserved)
+```
+
+**Available commands**:
+- `!branch list` - View all branches
+- `!branch create <name>` - Fork conversation
+- `!branch switch <name>` - Change active branch
+- `!branch merge <name>` - Combine branches
+- `!branch delete <name>` - Remove branch
+
+### Storage Structure
+
+```
+history/
+├── config.json                      # Global settings (NOT in Git)
+├── tokens/                          # OAuth tokens (NOT in Git)
+└── {channel_id}/                    # Per-channel (Git repository)
+    ├── .git/                        # Git metadata
+    ├── conversation.json            # Conversation history (Git-managed)
+    ├── channel_instruction.md       # Channel prompt (Git-managed)
+    └── files/                       # Images (Git-managed)
+        └── img_20240130_123456_001.png
+
+GEMINI.md                            # Master instruction (NOT in Git, project root)
+```
+
+### Benefits
+
+1. **Conversation Versioning**: Every message is tracked with full history
+2. **Experimentation**: Branch to try ideas without losing context
+3. **Rollback**: Switch branches to return to earlier conversation states
+4. **Export**: `!history export` includes full Git history
+5. **Independence**: Each channel's history is isolated
+
+---
+
+## システムプロンプト
+
+ボットは2階層のプロンプトシステムを使用し、柔軟にAIの動作をカスタマイズできます:
+
+### マスター指示書（全体共通）
+
+マスター指示書は**全チャンネル**に適用され、ボットの基本的な性格と動作を定義します。
+
+**保存場所**: プロジェクトルートの `GEMINI.md`（Git管理外、手動管理）
+
+**管理方法**:
+- **表示**: `!system_prompt show` - 現在のマスター指示書を表示
+- **ダウンロード**: `!system_prompt download` - `GEMINI.md` ファイルとしてダウンロードして編集
+- **編集**: `GEMINI.md` という名前のファイルを任意のチャンネルにアップロード
+
+**記述例**:
+```
+あなたはソフトウェア開発に特化した、親切でプロフェッショナルなAIアシスタントです。
+
+ガイドライン:
+- 常に明確でコメント付きのコード例を提供してください
+- 技術的な概念をわかりやすく説明してください
+- 簡潔かつ徹底的に答えてください
+- 読みやすさのためにマークダウン形式を使用してください
+```
+
+**使用例**:
+- ボットの基本的な性格を定義（例: 「あなたは親切なプログラミングアシスタントです」）
+- 組織全体のガイドラインやポリシーを設定
+- デフォルトの応答スタイルとトーンを設定
+
+**Git管理**: バージョン管理されません（`.gitignore`に含まれる）。手動または独自のバージョン管理で管理してください。
+
+### チャンネル個別指示
+
+各チャンネルは、マスター指示書を**拡張**する独自の追加指示を持つことができます。
+
+**保存場所**: `history/{channel_id}/channel_instruction.md`（チャンネルごとにGit管理）
+
+**管理方法**:
+- **表示**: `!channel_prompt show` - 現在のチャンネル指示書を表示
+- **ダウンロード**: `!channel_prompt download` - `channel_instruction.md` としてダウンロード
+- **編集**: `channel_instruction.md` という名前のファイルをチャンネルにアップロード
+- **削除**: `!channel_prompt clear` - チャンネル指示書を削除
+
+**記述例**（Pythonチャンネル向け）:
+```
+このチャンネルはPythonプログラミングの議論専用です。
+
+追加ガイドライン:
+- Python 3.10+ の機能とベストプラクティスに焦点を当ててください
+- 型ヒントと適切なドキュメントを推奨してください
+- テスト例には pytest を提案してください
+- PEP 8 スタイルガイドラインに従ってください
+```
+
+**使用例**:
+- チャンネル固有のコンテキストを追加（例: 「このチャンネルはPythonの議論専用です」）
+- 特定の用途向けに動作を上書きまたは拡張
+- 一時的なプロジェクト固有の指示を設定
+
+**Git管理**: 変更のたびに自動コミット。詳細は [Git バージョン管理](#git-バージョン管理) を参照。
+
+### プロンプトの結合方法
+
+Geminiに送信される最終的なプロンプトは以下のように構成されます:
+
+```
+[マスター指示書]
+
+[チャンネル指示書]
+
+[ユーザーメッセージ]
+```
+
+**例**:
+- **マスター**: 「あなたは親切なアシスタントです。常に簡潔に答えてください。」
+- **チャンネル**（#python-helpチャンネル）: 「Pythonのベストプラクティスに焦点を当て、コード例を提供してください。」
+- **結果**: #python-helpチャンネルでは、ボットは簡潔で親切、かつPythonに特化したコード例を含む応答をします。
+
+**注意**: チャンネル指示書が設定されていない場合は、マスター指示書のみが使用されます。
+
+---
+
+## Git バージョン管理
+
+### Git で管理されるもの
+
+ボットは**チャンネル固有のデータのみ**を自動的にGitでバージョン管理します。各チャンネルは独立したGitリポジトリを持ちます。
+
+#### Git管理対象ファイル（チャンネルごと）
+
+`history/{channel_id}/` に配置:
+
+- **`conversation.json`** - 完全な会話履歴
+  - メッセージ交換の後に毎回コミット
+  - 会話の分岐と履歴追跡を可能にする
+  
+- **`channel_instruction.md`** - チャンネル固有の指示書
+  - ファイルアップロードまたは `!channel_prompt clear` で更新時にコミット
+  - ブランチを通じて以前の指示書に戻すことが可能
+  
+- **`files/`** - 画像添付ファイル
+  - 会話内で画像がアップロードされた際にコミット
+  - ブランチ間で保持される
+
+#### Git管理対象外ファイル
+
+- **`GEMINI.md`**（プロジェクトルート）- マスター指示書
+  - `.gitignore` で除外
+  - 理由: Git の煩雑さなしに柔軟な手動編集を可能にする
+  - 必要に応じて独自にバージョン管理を使用可能
+
+- **`history/config.json`** - グローバルボット設定
+  - チャンネルのモデルと生成設定を含む
+  - ボットコマンド（`!model`, `!config`）で管理
+
+- **`history/tokens/`** - Google OAuth トークン
+  - セキュリティ: バージョン管理すべきではない
+
+- **`.env`** - 環境変数（APIキー、トークン）
+  - セキュリティ: バージョン管理すべきではない
+
+- **`credentials.json`** - Google OAuth 認証情報
+  - セキュリティ: バージョン管理すべきではない
+
+### この設計の理由
+
+**チャンネル固有データ（Git管理）**:
+- `!branch` コマンドで会話を分岐可能
+- `!history` コマンドで完全な履歴追跡を提供
+- 完全なコンテキスト付きで会話をエクスポート可能
+- 各チャンネルが独立して動作
+
+**グローバル/機密データ（Git管理外）**:
+- **`GEMINI.md`**: 手動編集と共有のために設計。必要に応じてGit外で管理
+- **設定/機密情報**: セキュリティのベストプラクティス - 認証情報はコミットしない
+- **グローバル設定**: 全チャンネルでボットが自動管理
+
+### 自動 Git 操作
+
+ボットは以下の変更を自動的にコミットします:
+
+1. **会話の更新**
+   - ユーザーメッセージとボット応答の後
+   - コミットメッセージ: `"Update conversation"`
+
+2. **チャンネル指示書の変更**
+   - `channel_instruction.md` をアップロードした時
+   - `!channel_prompt clear` を使用した時
+   - コミットメッセージ: `"Update channel instruction"`, `"Initialize empty channel instruction"`
+
+3. **ブランチ操作**
+   - 切り替え前の自動保存: `"Auto-save before branch switch"`
+   - マージの記録: `"Merge branch 'ブランチ名'"`
+
+### ブランチワークフロー
+
+各チャンネルリポジトリは会話の分岐のためGitブランチをサポート:
+
+**使用例**: 現在の会話を失わずに異なるアプローチを探索したい。
+
+```
+メイン会話（mainブランチ）
+├─ 現在の議論を継続
+└─ ブランチ "experiment" を作成 → 別のアプローチを試す
+   ├─ 成功した場合 → mainにマージ
+   └─ 成功しなかった場合 → mainに戻る（experimentは保持）
+```
+
+**利用可能なコマンド**:
+- `!branch list` - すべてのブランチを表示
+- `!branch create <名前>` - 会話をフォーク
+- `!branch switch <名前>` - アクティブブランチを変更
+- `!branch merge <名前>` - ブランチを結合
+- `!branch delete <名前>` - ブランチを削除
+
+### 保存構造
+
+```
+history/
+├── config.json                      # グローバル設定（Git管理外）
+├── tokens/                          # OAuth トークン（Git管理外）
+└── {channel_id}/                    # チャンネルごと（Gitリポジトリ）
+    ├── .git/                        # Git メタデータ
+    ├── conversation.json            # 会話履歴（Git管理）
+    ├── channel_instruction.md       # チャンネルプロンプト（Git管理）
+    └── files/                       # 画像（Git管理）
+        └── img_20240130_123456_001.png
+
+GEMINI.md                            # マスター指示書（Git管理外、プロジェクトルート）
+```
+
+### メリット
+
+1. **会話のバージョン管理**: すべてのメッセージが完全な履歴とともに追跡される
+2. **実験**: コンテキストを失わずにアイデアを試すためにブランチを作成
+3. **ロールバック**: ブランチを切り替えて以前の会話状態に戻る
+4. **エクスポート**: `!history export` で完全なGit履歴を含む
+5. **独立性**: 各チャンネルの履歴は分離されている
 
 ---
 
@@ -347,17 +753,6 @@ uv run python bot.py
 |---------|-------------|
 | `!image <prompt>` | Generate an image from text |
 
-### System Prompt
-
-| Command | Description |
-|---------|-------------|
-| `!prompt show` | Show current system prompt |
-| `!prompt set <content>` | Set system prompt |
-| `!prompt append <content>` | Append to existing system prompt |
-| `!prompt clear` | Clear system prompt |
-| `!prompt download` | Download system prompt as file |
-| Upload `GEMINI.md` | Upload file to set system prompt |
-
 ### Generation Config
 
 | Command | Description |
@@ -431,17 +826,6 @@ Available parameters:
 | コマンド | 説明 |
 |---------|------|
 | `!image <プロンプト>` | テキストから画像を生成 |
-
-### システムプロンプト
-
-| コマンド | 説明 |
-|---------|------|
-| `!prompt show` | 現在のシステムプロンプトを表示 |
-| `!prompt set <内容>` | システムプロンプトを設定 |
-| `!prompt append <内容>` | 既存のシステムプロンプトに追記 |
-| `!prompt clear` | システムプロンプトを削除 |
-| `!prompt download` | システムプロンプトをファイルでダウンロード |
-| `GEMINI.md` をアップロード | ファイルをアップロードしてプロンプトを設定 |
 
 ### 生成設定
 
@@ -534,47 +918,43 @@ GEMINI_CHANNEL_ID=123456789012345678,987654321098765432
 
 ---
 
-## System Prompts
+## System Prompt (Master)
 
-Each channel can have its own system prompt. You can set it via Discord commands:
+The master system prompt applies to all channels. You can view and manage it:
 
-```
-!prompt set You are a helpful assistant.
-!prompt show
-!prompt clear
-```
+- **View**: Use `!system_prompt show` to view the current master instruction
+- **Download**: Use `!system_prompt download` to download as a file
+- **Edit**: Upload a file named `GEMINI.md` to any channel to update the master instruction
 
-### Download / Upload
+### Channel Instruction (Per-channel)
 
-You can also download and upload system prompts as files:
+Each channel can have its own additional instruction.
 
-- **Download**: Use `!prompt download` to download the current system prompt as `GEMINI.md`
-- **Upload**: Simply upload a file named `GEMINI.md` to the channel, and the bot will automatically update the system prompt
+- **View**: Use `!channel_prompt show` to view the current channel instruction
+- **Download**: Use `!channel_prompt download` to download as a file
+- **Edit**: Upload a file named `channel_instruction.md` to the channel
+- **Clear**: Use `!channel_prompt clear` to remove the channel instruction
 
-This is useful for editing long prompts in your favorite text editor.
+System prompts are constructed as: `[Master Instruction] + [Channel Instruction]`.
 
-System prompts are stored in `history/{channel_id}/GEMINI.md`.
+## システムプロンプト (マスター)
 
-## システムプロンプト
+マスター指示書は全チャンネルに適用されます。以下の方法で管理できます:
 
-各チャンネルは独自のシステムプロンプトを持てます。Discordコマンドで設定できます:
+- **表示**: `!system_prompt show` で現在のマスター指示書を表示
+- **ダウンロード**: `!system_prompt download` でファイルとしてダウンロード
+- **編集**: `GEMINI.md` という名前のファイルを任意のチャンネルにアップロードして更新
 
-```
-!prompt set あなたは親切なアシスタントです。
-!prompt show
-!prompt clear
-```
+### チャンネル個別指示
 
-### ダウンロード / アップロード
+各チャンネルは独自の追加指示を持つことができます。
 
-システムプロンプトはファイルとしてダウンロード・アップロードすることもできます:
+- **表示**: `!channel_prompt show` で現在のチャンネル指示書を表示
+- **ダウンロード**: `!channel_prompt download` でファイルとしてダウンロード
+- **編集**: `channel_instruction.md` という名前のファイルをチャンネルにアップロード
+- **削除**: `!channel_prompt clear` でチャンネル指示書を削除
 
-- **ダウンロード**: `!prompt download` で現在のシステムプロンプトを `GEMINI.md` としてダウンロード
-- **アップロード**: `GEMINI.md` という名前のファイルをチャンネルにアップロードすると、ボットが自動的にシステムプロンプトを更新
-
-長いプロンプトをお気に入りのテキストエディタで編集したい場合に便利です。
-
-システムプロンプトは`history/{channel_id}/GEMINI.md`に保存されます。
+システムプロンプトは `[マスター指示書] + [チャンネル指示書]` の形で結合されます。
 
 ---
 
@@ -586,15 +966,21 @@ Conversation history is persisted per channel using Git in the `history/` direct
 - History survives bot restarts
 - Branch/merge support for conversation forking
 - Export to Markdown with `!history export`
+- Full Git history with automatic commits
+
+For more details on Git operations and version control, see [Git Version Control](#git-version-control).
 
 ## 会話履歴
 
-会話履歴は`history/`ディレクトリにGitで永続化されます。
+会話履歴は`history/`ディレクトリにGitでチャンネルごとに永続化されます。
 
 - 各チャンネルが独自のGitリポジトリを持つ
 - 再起動後も履歴が保持される
 - ブランチ・マージで会話を分岐可能
 - `!history export`でMarkdownにエクスポート
+- 自動コミットによる完全なGit履歴
+
+Git操作とバージョン管理の詳細については、[Git バージョン管理](#git-バージョン管理) を参照してください。
 
 ---
 
@@ -777,13 +1163,14 @@ gem-bot/                    # Repository root
 ├── locales/
 │   ├── ja.json             # Japanese translations
 │   └── en.json             # English translations
+├── GEMINI.md               # Master instruction (git-ignored)
 ├── history/                # Conversation data (git-ignored)
 │   ├── config.json         # Global settings
 │   ├── tokens/             # Google OAuth tokens (git-ignored)
 │   └── {channel_id}/       # Per-channel data
 │       ├── .git/           # Git repository
 │       ├── conversation.json  # Conversation history
-│       ├── GEMINI.md       # System prompt
+│       ├── channel_instruction.md       # Channel-specific instruction
 │       └── files/          # Image attachments
 ├── credentials.json        # Google OAuth credentials (git-ignored)
 └── .env                    # Environment variables (git-ignored)

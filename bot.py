@@ -22,7 +22,7 @@ class LocalizedHelpCommand(commands.DefaultHelpCommand):
     # Command groups for organized help display
     COMMAND_GROUPS = {
         "general": ["help", "info", "lang"],
-        "conversation": ["model", "prompt", "config"],
+        "conversation": ["model", "system_prompt", "channel_prompt", "config"],
         "history": ["history", "branch"],
         "tools": ["image", "mode"],
         "integrations": ["calendar"],
@@ -935,8 +935,33 @@ async def on_command_error(ctx, error):
 # =============================================================================
 
 
-async def _handle_gemini_md_upload(message) -> bool:
-    """Handle GEMINI.md file upload.
+async def _handle_instruction_upload(message) -> bool:
+    """Handle channel_instruction.md file upload.
+
+    Args:
+        message: Discord message object.
+
+    Returns:
+        True if handled (should stop processing), False otherwise.
+    """
+    for attachment in message.attachments:
+        if attachment.filename == "channel_instruction.md":
+            try:
+                content = await attachment.read()
+                text = content.decode("utf-8")
+                channel_id = message.channel.id
+                bot.history_manager.save_system_prompt(channel_id, text)
+                await message.channel.send(bot.i18n.t("prompt_updated_from_file"))
+            except UnicodeDecodeError:
+                await message.channel.send(bot.i18n.t("prompt_file_decode_error"))
+            except Exception as e:
+                await message.channel.send(bot.i18n.t("prompt_error", error=str(e)))
+            return True
+    return False
+
+
+async def _handle_master_instruction_upload(message) -> bool:
+    """Handle GEMINI.md (master instruction) file upload.
 
     Args:
         message: Discord message object.
@@ -949,11 +974,10 @@ async def _handle_gemini_md_upload(message) -> bool:
             try:
                 content = await attachment.read()
                 text = content.decode("utf-8")
-                channel_id = message.channel.id
-                bot.history_manager.save_system_prompt(channel_id, text)
-                await message.channel.send(bot.i18n.t("prompt_updated_from_file"))
+                bot.history_manager.save_master_prompt(text)
+                await message.channel.send(bot.i18n.t("master_prompt_updated"))
             except UnicodeDecodeError:
-                await message.channel.send(bot.i18n.t("prompt_file_decode_error"))
+                await message.channel.send(bot.i18n.t("master_prompt_decode_error"))
             except Exception as e:
                 await message.channel.send(bot.i18n.t("prompt_error", error=str(e)))
             return True
@@ -1100,8 +1124,12 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # Handle GEMINI.md file upload (works in any channel)
-    if await _handle_gemini_md_upload(message):
+    # Handle channel_instruction.md file upload (works in any channel)
+    if await _handle_instruction_upload(message):
+        return
+
+    # Handle GEMINI.md (master instruction) upload
+    if await _handle_master_instruction_upload(message):
         return
 
     # Handle pending model selection interaction

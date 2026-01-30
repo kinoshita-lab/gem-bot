@@ -658,19 +658,19 @@ class Commands(commands.Cog):
         except Exception as e:
             await ctx.send(self.t("branch_error", error=e))
 
-    @commands.group(name="prompt")
-    async def prompt(self, ctx: commands.Context):
-        """System prompt management commands."""
+    @commands.group(name="system_prompt")
+    async def system_prompt(self, ctx: commands.Context):
+        """System prompt management commands (Master Instruction)."""
         if ctx.invoked_subcommand is None:
             await self._handle_invalid_subcommand(ctx, "prompt_usage")
 
-    @prompt.command(name="show")
+    @system_prompt.command(name="show")
     async def prompt_show(self, ctx: commands.Context):
-        """Show the current system prompt."""
-        channel_id = ctx.channel.id
-
+        """Show the current master system prompt."""
         try:
-            content = self.bot.history_manager.load_system_prompt(channel_id)
+            # Load master prompt directly from file
+            master_path = self.bot.history_manager.base_dir.parent / "GEMINI.md"
+            content = master_path.read_text(encoding="utf-8") if master_path.exists() else ""
 
             if not content.strip():
                 await ctx.send(self.t("prompt_show_empty"))
@@ -694,60 +694,12 @@ class Commands(commands.Cog):
         except Exception as e:
             await ctx.send(self.t("prompt_error", error=e))
 
-    @prompt.command(name="set")
-    async def prompt_set(self, ctx: commands.Context, *, content: str | None = None):
-        """Set the system prompt."""
-        if content is None:
-            await ctx.send(self.t("prompt_set_usage"))
-            return
-
-        channel_id = ctx.channel.id
-
-        try:
-            self.bot.history_manager.save_system_prompt(channel_id, content)
-            await ctx.send(self.t("prompt_set_success"))
-        except Exception as e:
-            await ctx.send(self.t("prompt_error", error=e))
-
-    @prompt.command(name="clear")
-    async def prompt_clear(self, ctx: commands.Context):
-        """Clear the system prompt."""
-        channel_id = ctx.channel.id
-
-        try:
-            self.bot.history_manager.save_system_prompt(channel_id, "")
-            await ctx.send(self.t("prompt_clear_success"))
-        except Exception as e:
-            await ctx.send(self.t("prompt_error", error=e))
-
-    @prompt.command(name="append")
-    async def prompt_append(self, ctx: commands.Context, *, content: str | None = None):
-        """Append text to the system prompt."""
-        if content is None:
-            await ctx.send(self.t("prompt_append_usage"))
-            return
-
-        channel_id = ctx.channel.id
-
-        try:
-            current = self.bot.history_manager.load_system_prompt(channel_id)
-            # Append with newline if current content exists
-            if current.strip():
-                new_content = current + "\n" + content
-            else:
-                new_content = content
-            self.bot.history_manager.save_system_prompt(channel_id, new_content)
-            await ctx.send(self.t("prompt_append_success"))
-        except Exception as e:
-            await ctx.send(self.t("prompt_error", error=e))
-
-    @prompt.command(name="download")
+    @system_prompt.command(name="download")
     async def prompt_download(self, ctx: commands.Context):
-        """Download the current system prompt as a file."""
-        channel_id = ctx.channel.id
-
+        """Download the current master system prompt as a file."""
         try:
-            content = self.bot.history_manager.load_system_prompt(channel_id)
+            master_path = self.bot.history_manager.base_dir.parent / "GEMINI.md"
+            content = master_path.read_text(encoding="utf-8") if master_path.exists() else ""
 
             if not content.strip():
                 await ctx.send(self.t("prompt_download_empty"))
@@ -822,6 +774,75 @@ class Commands(commands.Cog):
 
             except Exception as e:
                 await ctx.send(self.t("image_error", error=e))
+
+    @commands.group(name="channel_prompt")
+    async def channel_prompt(self, ctx: commands.Context):
+        """Channel instruction management commands."""
+        if ctx.invoked_subcommand is None:
+            await self._handle_invalid_subcommand(ctx, "channel_prompt_usage")
+
+    @channel_prompt.command(name="show")
+    async def channel_prompt_show(self, ctx: commands.Context):
+        """Show the current channel instruction."""
+        channel_id = ctx.channel.id
+
+        try:
+            content = self.bot.history_manager.load_channel_prompt(channel_id)
+
+            if not content.strip():
+                await ctx.send(self.t("channel_prompt_show_empty"))
+                return
+
+            # Discord message limit is 2000 chars, use embed for better formatting
+            # Split if too long
+            if len(content) <= 1900:
+                embed = discord.Embed(
+                    title=self.t("channel_prompt_show_title"),
+                    description=f"```\n{content}\n```",
+                    color=discord.Color.blue(),
+                )
+                await ctx.send(embed=embed)
+            else:
+                # Split into chunks
+                await ctx.send(self.t("channel_prompt_show_title"))
+                chunks = [content[i : i + 1900] for i in range(0, len(content), 1900)]
+                for chunk in chunks:
+                    await ctx.send(f"```\n{chunk}\n```")
+        except Exception as e:
+            await ctx.send(self.t("channel_prompt_error", error=e))
+
+    @channel_prompt.command(name="download")
+    async def channel_prompt_download(self, ctx: commands.Context):
+        """Download the current channel instruction as a file."""
+        channel_id = ctx.channel.id
+
+        try:
+            content = self.bot.history_manager.load_channel_prompt(channel_id)
+
+            if not content.strip():
+                await ctx.send(self.t("channel_prompt_download_empty"))
+                return
+
+            # Create discord.File from content
+            file = discord.File(
+                io.BytesIO(content.encode("utf-8")),
+                filename="channel_instruction.md",
+            )
+
+            await ctx.send(self.t("channel_prompt_download_success"), file=file)
+        except Exception as e:
+            await ctx.send(self.t("channel_prompt_error", error=e))
+
+    @channel_prompt.command(name="clear")
+    async def channel_prompt_clear(self, ctx: commands.Context):
+        """Clear the channel instruction."""
+        channel_id = ctx.channel.id
+
+        try:
+            self.bot.history_manager.save_system_prompt(channel_id, "")
+            await ctx.send(self.t("channel_prompt_clear_success"))
+        except Exception as e:
+            await ctx.send(self.t("channel_prompt_error", error=e))
 
     @commands.group(name="config")
     async def config(self, ctx: commands.Context):

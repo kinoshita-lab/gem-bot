@@ -626,52 +626,101 @@ class HistoryManager:
 
         return channels
 
-    def get_system_prompt_path(self, channel_id: int) -> Path:
-        """Get the path to the system prompt file.
+    def get_channel_prompt_path(self, channel_id: int) -> Path:
+        """Get the path to the channel instruction file.
 
         Args:
             channel_id: Discord channel ID.
 
         Returns:
-            Path to the GEMINI.md file.
+            Path to the channel_instruction.md file.
         """
-        return self._get_repo_path(channel_id) / "GEMINI.md"
+        return self._get_repo_path(channel_id) / "channel_instruction.md"
 
-    def load_system_prompt(self, channel_id: int) -> str:
-        """Load system prompt from file. Create empty file if not exists.
+    def load_channel_prompt(self, channel_id: int) -> str:
+        """Load channel-specific instruction from file.
 
         Args:
             channel_id: Discord channel ID.
 
         Returns:
-            System prompt content.
+            Channel instruction content.
         """
         self._ensure_repo(channel_id)
-        path = self.get_system_prompt_path(channel_id)
+        path = self.get_channel_prompt_path(channel_id)
 
         if not path.exists():
-            # Create empty file
-            path.write_text("", encoding="utf-8")
-            self.commit(channel_id, "Initialize empty system prompt")
+            return ""
 
         return path.read_text(encoding="utf-8")
+
+    def load_system_prompt(self, channel_id: int) -> str:
+        """Load system prompt.
+
+        Merges Master instruction (root GEMINI.md) and
+        Channel instruction (channel_instruction.md).
+
+        Args:
+            channel_id: Discord channel ID.
+
+        Returns:
+            Combined system prompt content.
+        """
+        # Load Master Instruction (Optional)
+        master_path = self.base_dir.parent / "GEMINI.md"
+        master_content = ""
+        if master_path.exists():
+            try:
+                master_content = master_path.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"Error reading master GEMINI.md: {e}")
+
+        # Load Channel Instruction
+        self._ensure_repo(channel_id)
+        channel_path = self.get_channel_prompt_path(channel_id)
+        channel_content = ""
+
+        if channel_path.exists():
+            channel_content = channel_path.read_text(encoding="utf-8")
+        else:
+            # Create empty file
+            channel_path.write_text("", encoding="utf-8")
+            self.commit(channel_id, "Initialize empty channel instruction")
+
+        # Combine
+        parts = []
+        if master_content:
+            parts.append(master_content)
+        if channel_content:
+            parts.append(channel_content)
+            
+        return "\n\n".join(parts)
 
     def save_system_prompt(
         self, channel_id: int, content: str, auto_commit: bool = True
     ) -> None:
-        """Save system prompt to file.
+        """Save channel instruction to file.
 
         Args:
             channel_id: Discord channel ID.
-            content: System prompt content.
+            content: Channel instruction content.
             auto_commit: Whether to automatically commit changes.
         """
         self._ensure_repo(channel_id)
-        path = self.get_system_prompt_path(channel_id)
+        path = self.get_channel_prompt_path(channel_id)
         path.write_text(content, encoding="utf-8")
 
         if auto_commit:
-            self.commit(channel_id, "Update system prompt")
+            self.commit(channel_id, "Update channel instruction")
+
+    def save_master_prompt(self, content: str) -> None:
+        """Save master instruction to root GEMINI.md.
+
+        Args:
+            content: Master instruction content.
+        """
+        master_path = self.base_dir.parent / "GEMINI.md"
+        master_path.write_text(content, encoding="utf-8")
 
     def _get_global_config_path(self) -> Path:
         """Get the path to the global config file.
