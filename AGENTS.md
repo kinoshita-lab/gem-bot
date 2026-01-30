@@ -1,217 +1,228 @@
 # AGENTS.md
 
-This file contains guidelines for AI coding agents.
+Guidelines for AI coding agents working in this repository.
 
-## Important Rules
+## Critical Rules - MUST FOLLOW
 
-**Do not commit unless explicitly instructed. The user needs to verify the changes first.**
+### Git Operations - ABSOLUTELY PROHIBITED
+
+**The following commands are STRICTLY FORBIDDEN unless the user explicitly uses the words "commit" or "push":**
+
+- `git commit` - PROHIBITED
+- `git push` - PROHIBITED
+- `git add . && git commit` - PROHIBITED
+- `gh pr create` - PROHIBITED
+
+**The following phrases are NOT permission to commit or push:**
+
+- "complete this", "finish", "done"
+- "apply changes", "save changes"
+- "build", "fix", "update"
+- "make this work", "implement this"
+- Any instruction that does not explicitly contain "commit" or "push"
+
+**Required behavior after making changes:**
+
+1. Report a summary of what was changed
+2. Ask the user: "Would you like me to commit these changes?"
+3. Wait for explicit permission before running any git commit/push commands
+
+**User needs to verify all changes before any commit is made.**
 
 ## Project Overview
 
-A Discord bot that enables AI conversations using the Gemini API with Google Calendar/Tasks integration.
+A Discord bot enabling AI conversations using the Gemini API with Google Calendar/Tasks integration.
 
-## Tech Stack
+**Tech Stack:** Python 3.13+, discord.py, google-genai, google-api-python-client, uv
 
-- Python 3.13+
-- discord.py (Discord Bot framework)
-- google-genai (Gemini API client)
-- google-api-python-client (Google Calendar/Tasks API)
-- google-auth-oauthlib (OAuth 2.0 flow)
-- uv (Package manager)
-
-## Project Structure
-
-```
-gem-bot/                    # Repository root
-├── bot.py                  # Entry point, GeminiBot class, event handlers
-├── cogs/
-│   ├── __init__.py         # Cog package marker
-│   └── commands.py         # Discord commands
-├── history_manager.py      # Git-based history management
-├── i18n.py                 # Internationalization
-├── calendar_manager.py     # Google Calendar/Tasks OAuth & API
-├── calendar_tools.py       # Gemini Calendar function declarations
-├── tasks_tools.py          # Gemini Tasks function declarations
-├── locales/
-│   ├── ja.json             # Japanese translations
-│   └── en.json             # English translations
-├── history/                # Conversation data (git-ignored)
-│   ├── config.json         # Global settings (language, per-channel model/config)
-│   ├── tokens/             # Google OAuth tokens per user
-│   └── {channel_id}/       # Per-channel Git repository
-│       ├── .git/
-│       ├── conversation.json
-│       ├── GEMINI.md       # System prompt
-│       └── files/          # Image attachments
-├── credentials.json        # Google OAuth credentials (git-ignored)
-├── .env                    # Environment variables (git-ignored)
-└── .env.example            # Environment variables template
-```
-
-## Architecture
-
-### GeminiBot Class (bot.py)
-
-A custom class extending `commands.Bot`. It holds the following state:
-
-- `gemini_client`: Gemini API client
-- `default_model`: Default model name (used when no channel-specific setting exists)
-- `pending_model_selections`: Interactive model selection state
-- `pending_delete_confirmations`: Delete confirmation state
-- `conversation_history`: Per-channel conversation history
-- `history_manager`: Git-based history and settings manager
-- `i18n`: Internationalization manager
-- `calendar_auth`: Google Calendar OAuth manager
-- `calendar_tool_handler`: Calendar tool handler
-- `tasks_tool_handler`: Tasks tool handler
-- `channel_tool_mode`: Per-channel tool mode (default/calendar/todo)
-
-Model and generation config settings are managed per-channel in `history/config.json`.
-
-### Cog (cogs/commands.py)
-
-Commands are separated using discord.py's Cog feature.
-
-**Command Groups:**
-- `!model` - Model management (list, set)
-- `!history` - Conversation history (list, delete, clear, export)
-- `!branch` - Branch management (create, list, switch, delete, merge)
-- `!prompt` - System prompt (show, set, append, clear, download)
-- `!config` - Generation config (show, set, reset)
-- `!mode` - Tool mode (default, calendar, todo)
-- `!google` - Google integration (link, unlink, status)
-- `!image` - Image generation
-
-### Calendar Manager (calendar_manager.py)
-
-Handles Google OAuth 2.0 flow and API calls:
-
-- `CalendarAuthManager`: OAuth flow, credential storage, API service creation
-- `OAuthCallbackHandler`: HTTP handler for OAuth redirect
-- Calendar API: list_events, create_event, update_event, delete_event
-- Tasks API: list_task_lists, list_tasks, create_task, update_task, complete_task, delete_task
-
-### Tool Handlers (calendar_tools.py, tasks_tools.py)
-
-Declare Gemini function tools and handle function calls:
-
-- `get_calendar_tools()`: Returns Gemini Tool objects for calendar
-- `get_tasks_tools()`: Returns Gemini Tool objects for tasks
-- `CalendarToolHandler`: Routes calendar function calls to API
-- `TasksToolHandler`: Routes tasks function calls to API
-
-### History Manager (history_manager.py)
-
-Git-based conversation persistence:
-
-- Per-channel Git repositories
-- Branch/merge operations
-- Image file storage with MIME type handling
-- System prompt storage (GEMINI.md)
-- Global config management
-
-### i18n (i18n.py)
-
-Internationalization support:
-
-- Auto-detects languages from `locales/` directory
-- JSON-based translation files
-- `t(key, **kwargs)` for formatted translations
-
-## Coding Guidelines
-
-### Async Processing
-
-- Always use the **async version** of Gemini API calls (`client.aio.models.xxx`)
-- Using sync version blocks Discord's heartbeat and causes disconnection
-
-```python
-# Good
-response = await self.gemini_client.aio.models.generate_content(...)
-
-# Bad - blocks the event loop
-response = self.gemini_client.models.generate_content(...)
-```
-
-### Adding Commands
-
-Add new commands to the `Commands` class in `cogs/commands.py`:
-
-```python
-@commands.command(name="newcommand")
-async def newcommand(self, ctx: commands.Context):
-    """Command description"""
-    # Access GeminiBot instance via self.bot
-    pass
-```
-
-For command groups (subcommands):
-
-```python
-@commands.group(name="mygroup", invoke_without_command=True)
-async def mygroup(self, ctx: commands.Context):
-    """Group description"""
-    if ctx.invoked_subcommand is None:
-        await ctx.send(self.t("mygroup_help"))
-
-@mygroup.command(name="subcommand")
-async def mygroup_subcommand(self, ctx: commands.Context, arg: str):
-    """Subcommand description"""
-    pass
-```
-
-### Accessing Shared State
-
-Access shared state from Cog via `self.bot`:
-
-- `self.bot.get_model(channel_id)`: Get model for channel
-- `self.bot.set_model(channel_id, model)`: Set model for channel
-- `self.bot.get_tool_mode(channel_id)`: Get tool mode for channel
-- `self.bot.set_tool_mode(channel_id, mode)`: Set tool mode for channel
-- `self.bot.default_model`: Default model
-- `self.bot.gemini_client`: Gemini API client
-- `self.bot.conversation_history`: Per-channel conversation history dict
-- `self.bot.pending_model_selections`: Model selection state
-- `self.bot.pending_delete_confirmations`: Delete confirmation state
-- `self.bot.history_manager`: Git-based history manager
-- `self.bot.i18n`: Internationalization manager
-- `self.bot.calendar_auth`: Google Calendar auth manager
-- `self.bot.calendar_tool_handler`: Calendar tool handler
-- `self.bot.tasks_tool_handler`: Tasks tool handler
-
-### Translation
-
-Use `self.t(key, **kwargs)` in Cog for translated messages:
-
-```python
-await ctx.send(self.t("some_message_key", param=value))
-```
-
-Note: Avoid using `key` as a kwarg name since `t()` uses it as the first parameter.
-
-### Adding Tool Functions
-
-To add new Gemini function tools:
-
-1. Define the tool in a `*_tools.py` file using `types.Tool` and `types.FunctionDeclaration`
-2. Create a handler class with `handle_function_call()` method
-3. Register in `bot.py`:
-   - Add handler to GeminiBot
-   - Update `_get_tools_for_mode()` to return tools
-   - Update `_execute_single_function()` to route calls
-
-## Development Commands
+## Build/Lint/Test Commands
 
 ```bash
 # Install dependencies
 uv sync
 
-# Start the bot
+# Run the bot
 uv run python bot.py
 
-# Syntax check
+# Syntax check all Python files
 python -m py_compile bot.py cogs/commands.py history_manager.py i18n.py calendar_manager.py calendar_tools.py tasks_tools.py
+
+# Type checking (if mypy is added)
+uv run mypy bot.py
+
+# Run a single file syntax check
+python -m py_compile <filename.py>
 ```
+
+**Note:** No test framework is currently configured. Tests would be added with pytest.
+
+## Project Structure
+
+```
+gem-bot/
+├── bot.py                  # Entry point, GeminiBot class, event handlers
+├── cogs/
+│   ├── __init__.py
+│   └── commands.py         # Discord commands (Cog)
+├── history_manager.py      # Git-based history management
+├── i18n.py                 # Internationalization
+├── calendar_manager.py     # Google Calendar/Tasks OAuth & API
+├── calendar_tools.py       # Gemini Calendar function declarations
+├── tasks_tools.py          # Gemini Tasks function declarations
+├── locales/{en,ja}.json    # Translation files
+└── history/                # Runtime data (git-ignored)
+```
+
+## Code Style Guidelines
+
+### Import Order
+
+Group imports in this order, separated by blank lines:
+1. Standard library (`json`, `os`, `subprocess`, `datetime`)
+2. Third-party packages (`discord`, `google.genai`)
+3. Local modules (`history_manager`, `i18n`, `calendar_manager`)
+
+```python
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+import discord
+from discord.ext import commands
+from google.genai import types
+
+from history_manager import HistoryManager
+from i18n import I18nManager
+```
+
+### Type Annotations
+
+- Use Python 3.10+ union syntax: `str | None` instead of `Optional[str]`
+- Use lowercase generics: `list[str]`, `dict[str, Any]` instead of `List`, `Dict`
+- Annotate all function parameters and return types
+- Use `TYPE_CHECKING` for import-only type hints to avoid circular imports
+
+```python
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from i18n import I18nManager
+
+def get_model(self, channel_id: int) -> str:
+    ...
+
+def load_conversation(self, channel_id: int) -> dict[str, Any] | None:
+    ...
+```
+
+### Naming Conventions
+
+- **Classes:** PascalCase (`GeminiBot`, `HistoryManager`, `CalendarToolHandler`)
+- **Functions/methods:** snake_case (`load_conversation`, `_ensure_repo`)
+- **Constants:** UPPER_SNAKE_CASE (`DEFAULT_LANGUAGE`, `MIME_TO_EXT`)
+- **Private methods:** prefix with underscore (`_get_repo_path`, `_load_config`)
+
+### Docstrings
+
+Use Google-style docstrings for all public functions and classes:
+
+```python
+def save_conversation(
+    self,
+    channel_id: int,
+    messages: list[dict[str, Any]],
+    model: str,
+    auto_commit: bool = True,
+) -> None:
+    """Save conversation history to file.
+
+    Args:
+        channel_id: Discord channel ID.
+        messages: List of message dictionaries with role, content, timestamp.
+        model: Model name used for the conversation.
+        auto_commit: Whether to automatically commit changes.
+    """
+```
+
+### Async/Await
+
+**Critical:** Always use async Gemini API calls to avoid blocking Discord's event loop:
+
+```python
+# Correct - non-blocking
+response = await self.gemini_client.aio.models.generate_content(...)
+
+# Wrong - blocks event loop, causes disconnection
+response = self.gemini_client.models.generate_content(...)
+```
+
+### Error Handling
+
+- Catch specific exceptions, not bare `except:`
+- Re-raise or handle appropriately; avoid silent failures
+- Use translated error messages via `self.t()` for user-facing errors
+
+```python
+try:
+    self.bot.history_manager.create_branch(channel_id, branch_name)
+except RuntimeError as e:
+    await ctx.send(self.t("branch_error", error=e))
+except Exception as e:
+    await ctx.send(self.t("branch_error", error=e))
+```
+
+### String Formatting
+
+- Use f-strings for simple formatting: `f"Channel {channel_id}"`
+- Use `.format()` only for i18n: `self.t("key", param=value)`
+- JSON: Always use `ensure_ascii=False, indent=2` for readability
+
+### Class Constants
+
+Define class-level constants as class attributes:
+
+```python
+class HistoryManager:
+    MIME_TO_EXT: dict[str, str] = {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+    }
+```
+
+### Discord Commands
+
+Commands live in `cogs/commands.py`. Use command groups for related functionality:
+
+```python
+@commands.group(name="model")
+async def model(self, ctx: commands.Context):
+    """Model management commands."""
+    if ctx.invoked_subcommand is None:
+        await self._handle_invalid_subcommand(ctx, "model_usage")
+
+@model.command(name="list")
+async def model_list(self, ctx: commands.Context):
+    """Lists all available Gemini models."""
+    ...
+```
+
+### Translation Helper
+
+All classes with user-facing messages should have a `t()` shortcut:
+
+```python
+def t(self, key: str, **kwargs) -> str:
+    """Shortcut for translation."""
+    return self.bot.i18n.t(key, **kwargs)
+```
+
+## Key Patterns
+
+- **Early returns:** Prefer early returns to reduce nesting
+- **Frozensets for constants:** Use `frozenset` for immutable sets of function names
+- **Path objects:** Use `pathlib.Path` instead of `os.path`
+- **Context managers:** Use `async with ctx.typing():` for long operations
 
 ## Environment Variables
 
@@ -220,20 +231,3 @@ python -m py_compile bot.py cogs/commands.py history_manager.py i18n.py calendar
 | `DISCORD_BOT_TOKEN` | Yes | Discord Bot token |
 | `GEMINI_API_KEY` | Yes | Gemini API key |
 | `GEMINI_CHANNEL_ID` | Yes | Auto-response channel IDs (comma-separated) |
-
-## Optional Files
-
-| File | Description |
-|------|-------------|
-| `credentials.json` | Google OAuth credentials for Calendar/Tasks integration |
-
-## Notes
-
-- `.env` file is git-ignored. Never commit API keys or tokens.
-- `credentials.json` is git-ignored. Required for Google integration.
-- Discord messages have a 2000 character limit. `send_response` handles automatic splitting.
-- Conversation history is persisted via Git in `history/{channel_id}/`.
-- Each channel has its own Git repository for branch/merge support.
-- Global settings (language, per-channel model/config) are stored in `history/config.json`.
-- Google OAuth tokens are stored per-user in `history/tokens/`.
-- Image attachments are stored in `history/{channel_id}/files/`.
