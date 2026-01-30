@@ -8,34 +8,39 @@ from datetime import datetime, timedelta, timezone
 from google.genai import types
 
 from calendar_manager import CalendarAuthManager
+from i18n import I18nManager
 
 
-def get_calendar_tools() -> list[types.Tool]:
+def get_calendar_tools(i18n: I18nManager) -> list[types.Tool]:
     """Get the list of calendar tools for Gemini.
+
+    Args:
+        i18n: I18nManager instance for translations.
 
     Returns:
         List of Tool objects for calendar operations.
     """
+    t = i18n.t
     return [
         types.Tool(
             function_declarations=[
                 types.FunctionDeclaration(
                     name="list_calendar_events",
-                    description="ユーザーのGoogle Calendarから予定を取得する。今日の予定、明日の予定、今週の予定などを確認するときに使用する。",
+                    description=t("calendar_func_list_events_desc"),
                     parameters=types.Schema(
                         type=types.Type.OBJECT,
                         properties={
                             "time_min": types.Schema(
                                 type=types.Type.STRING,
-                                description="取得開始日時 (ISO 8601形式、例: 2024-01-15T00:00:00+09:00)。省略時は現在時刻。",
+                                description=t("calendar_param_time_min"),
                             ),
                             "time_max": types.Schema(
                                 type=types.Type.STRING,
-                                description="取得終了日時 (ISO 8601形式)。省略時は制限なし。",
+                                description=t("calendar_param_time_max"),
                             ),
                             "max_results": types.Schema(
                                 type=types.Type.INTEGER,
-                                description="取得する最大件数 (デフォルト: 10)",
+                                description=t("calendar_param_max_results"),
                             ),
                         },
                         required=[],
@@ -43,29 +48,29 @@ def get_calendar_tools() -> list[types.Tool]:
                 ),
                 types.FunctionDeclaration(
                     name="create_calendar_event",
-                    description="Google Calendarに新しい予定を作成する。会議、イベント、リマインダーなどを追加するときに使用する。",
+                    description=t("calendar_func_create_event_desc"),
                     parameters=types.Schema(
                         type=types.Type.OBJECT,
                         properties={
                             "summary": types.Schema(
                                 type=types.Type.STRING,
-                                description="予定のタイトル",
+                                description=t("calendar_param_summary"),
                             ),
                             "start_time": types.Schema(
                                 type=types.Type.STRING,
-                                description="開始日時 (ISO 8601形式、例: 2024-01-15T10:00:00+09:00) または日付のみ (例: 2024-01-15)",
+                                description=t("calendar_param_start_time"),
                             ),
                             "end_time": types.Schema(
                                 type=types.Type.STRING,
-                                description="終了日時 (ISO 8601形式) または日付のみ。終日イベントの場合は翌日の日付を指定。",
+                                description=t("calendar_param_end_time"),
                             ),
                             "description": types.Schema(
                                 type=types.Type.STRING,
-                                description="予定の詳細説明 (オプション)",
+                                description=t("calendar_param_description"),
                             ),
                             "location": types.Schema(
                                 type=types.Type.STRING,
-                                description="予定の場所 (オプション)",
+                                description=t("calendar_param_location"),
                             ),
                         },
                         required=["summary", "start_time", "end_time"],
@@ -73,33 +78,33 @@ def get_calendar_tools() -> list[types.Tool]:
                 ),
                 types.FunctionDeclaration(
                     name="update_calendar_event",
-                    description="既存の予定を更新する。予定の時間変更、タイトル変更などに使用する。",
+                    description=t("calendar_func_update_event_desc"),
                     parameters=types.Schema(
                         type=types.Type.OBJECT,
                         properties={
                             "event_id": types.Schema(
                                 type=types.Type.STRING,
-                                description="更新する予定のID",
+                                description=t("calendar_param_event_id_update"),
                             ),
                             "summary": types.Schema(
                                 type=types.Type.STRING,
-                                description="新しいタイトル (変更する場合のみ)",
+                                description=t("calendar_param_summary_new"),
                             ),
                             "start_time": types.Schema(
                                 type=types.Type.STRING,
-                                description="新しい開始日時 (変更する場合のみ)",
+                                description=t("calendar_param_start_time_new"),
                             ),
                             "end_time": types.Schema(
                                 type=types.Type.STRING,
-                                description="新しい終了日時 (変更する場合のみ)",
+                                description=t("calendar_param_end_time_new"),
                             ),
                             "description": types.Schema(
                                 type=types.Type.STRING,
-                                description="新しい詳細説明 (変更する場合のみ)",
+                                description=t("calendar_param_description_new"),
                             ),
                             "location": types.Schema(
                                 type=types.Type.STRING,
-                                description="新しい場所 (変更する場合のみ)",
+                                description=t("calendar_param_location_new"),
                             ),
                         },
                         required=["event_id"],
@@ -107,13 +112,13 @@ def get_calendar_tools() -> list[types.Tool]:
                 ),
                 types.FunctionDeclaration(
                     name="delete_calendar_event",
-                    description="予定を削除する。",
+                    description=t("calendar_func_delete_event_desc"),
                     parameters=types.Schema(
                         type=types.Type.OBJECT,
                         properties={
                             "event_id": types.Schema(
                                 type=types.Type.STRING,
-                                description="削除する予定のID",
+                                description=t("calendar_param_event_id_delete"),
                             ),
                         },
                         required=["event_id"],
@@ -127,13 +132,19 @@ def get_calendar_tools() -> list[types.Tool]:
 class CalendarToolHandler:
     """Handles calendar tool calls from Gemini."""
 
-    def __init__(self, calendar_auth: CalendarAuthManager):
+    def __init__(self, calendar_auth: CalendarAuthManager, i18n: I18nManager):
         """Initialize the handler.
 
         Args:
             calendar_auth: CalendarAuthManager instance.
+            i18n: I18nManager instance for translations.
         """
         self.calendar_auth = calendar_auth
+        self.i18n = i18n
+
+    def t(self, key: str, **kwargs) -> str:
+        """Get translated string."""
+        return self.i18n.t(key, **kwargs)
 
     async def handle_function_call(
         self,
@@ -155,7 +166,7 @@ class CalendarToolHandler:
         if not self.calendar_auth.is_user_authenticated(user_id):
             return {
                 "error": "not_authenticated",
-                "message": "Googleアカウントが連携されていません。`!calendar link` で連携してください。",
+                "message": self.t("calendar_not_authenticated"),
             }
 
         try:
@@ -182,7 +193,7 @@ class CalendarToolHandler:
         )
 
         if not events:
-            return {"events": [], "message": "予定はありません。"}
+            return {"events": [], "message": self.t("calendar_events_empty")}
 
         return {"events": events, "count": len(events)}
 
@@ -199,7 +210,7 @@ class CalendarToolHandler:
 
         return {
             "success": True,
-            "message": f"予定「{event['summary']}」を作成しました。",
+            "message": self.t("calendar_created", summary=event["summary"]),
             "event": event,
         }
 
@@ -217,7 +228,7 @@ class CalendarToolHandler:
 
         return {
             "success": True,
-            "message": f"予定「{event['summary']}」を更新しました。",
+            "message": self.t("calendar_updated", summary=event["summary"]),
             "event": event,
         }
 
@@ -230,5 +241,5 @@ class CalendarToolHandler:
 
         return {
             "success": True,
-            "message": "予定を削除しました。",
+            "message": self.t("calendar_deleted"),
         }

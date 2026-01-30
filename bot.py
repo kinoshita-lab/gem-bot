@@ -219,8 +219,8 @@ class GeminiBot(commands.Bot):
             calendar_auth = CalendarAuthManager()
             if calendar_auth.is_credentials_configured():
                 self.calendar_auth = calendar_auth
-                self.calendar_tool_handler = CalendarToolHandler(calendar_auth)
-                self.tasks_tool_handler = TasksToolHandler(calendar_auth)
+                self.calendar_tool_handler = CalendarToolHandler(calendar_auth, self.i18n)
+                self.tasks_tool_handler = TasksToolHandler(calendar_auth, self.i18n)
                 print("Google Calendar/Tasks integration enabled")
             else:
                 print("Google Calendar/Tasks integration disabled (credentials.json not found)")
@@ -407,9 +407,9 @@ class GeminiBot(commands.Bot):
         tool_mode = self.get_tool_mode(channel_id)
 
         if tool_mode == "calendar" and self.calendar_tool_handler:
-            return get_calendar_tools()
+            return get_calendar_tools(self.i18n)
         elif tool_mode == "todo" and self.tasks_tool_handler:
-            return get_tasks_tools()
+            return get_tasks_tools(self.i18n)
         else:
             # Default: Google Search
             return [types.Tool(google_search=types.GoogleSearch())]

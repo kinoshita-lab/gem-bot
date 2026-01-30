@@ -7,26 +7,31 @@ Google Tasks integration with Gemini API.
 from google.genai import types
 
 from calendar_manager import CalendarAuthManager
+from i18n import I18nManager
 
 
-def get_tasks_tools() -> list[types.Tool]:
+def get_tasks_tools(i18n: I18nManager) -> list[types.Tool]:
     """Get the list of tasks tools for Gemini.
+
+    Args:
+        i18n: I18n instance for translations.
 
     Returns:
         List of Tool objects for tasks operations.
     """
+    t = i18n.t
     return [
         types.Tool(
             function_declarations=[
                 types.FunctionDeclaration(
                     name="list_task_lists",
-                    description="ユーザーのGoogle Tasksのタスクリスト一覧を取得する。どのリストがあるか確認するときに使用する。",
+                    description=t("tasks_func_list_task_lists_desc"),
                     parameters=types.Schema(
                         type=types.Type.OBJECT,
                         properties={
                             "max_results": types.Schema(
                                 type=types.Type.INTEGER,
-                                description="取得する最大件数 (デフォルト: 10)",
+                                description=t("tasks_param_max_results_10"),
                             ),
                         },
                         required=[],
@@ -34,21 +39,21 @@ def get_tasks_tools() -> list[types.Tool]:
                 ),
                 types.FunctionDeclaration(
                     name="list_tasks",
-                    description="タスクリストからタスク一覧を取得する。TODOリストの確認、やるべきことの確認に使用する。",
+                    description=t("tasks_func_list_tasks_desc"),
                     parameters=types.Schema(
                         type=types.Type.OBJECT,
                         properties={
                             "tasklist_id": types.Schema(
                                 type=types.Type.STRING,
-                                description="タスクリストID。省略時はデフォルトのリスト(@default)を使用。",
+                                description=t("tasks_param_tasklist_id"),
                             ),
                             "show_completed": types.Schema(
                                 type=types.Type.BOOLEAN,
-                                description="完了済みタスクを表示するか (デフォルト: false)",
+                                description=t("tasks_param_show_completed"),
                             ),
                             "max_results": types.Schema(
                                 type=types.Type.INTEGER,
-                                description="取得する最大件数 (デフォルト: 100)",
+                                description=t("tasks_param_max_results_100"),
                             ),
                         },
                         required=[],
@@ -56,25 +61,25 @@ def get_tasks_tools() -> list[types.Tool]:
                 ),
                 types.FunctionDeclaration(
                     name="create_task",
-                    description="新しいタスクを作成する。TODOの追加、やることリストへの追加に使用する。",
+                    description=t("tasks_func_create_task_desc"),
                     parameters=types.Schema(
                         type=types.Type.OBJECT,
                         properties={
                             "title": types.Schema(
                                 type=types.Type.STRING,
-                                description="タスクのタイトル",
+                                description=t("tasks_param_title"),
                             ),
                             "notes": types.Schema(
                                 type=types.Type.STRING,
-                                description="タスクの詳細メモ (オプション)",
+                                description=t("tasks_param_notes"),
                             ),
                             "due": types.Schema(
                                 type=types.Type.STRING,
-                                description="期限日 (RFC 3339形式、例: 2024-01-15T00:00:00.000Z)。日付のみの場合はT00:00:00.000Zを付加。",
+                                description=t("tasks_param_due"),
                             ),
                             "tasklist_id": types.Schema(
                                 type=types.Type.STRING,
-                                description="タスクリストID。省略時はデフォルトのリストを使用。",
+                                description=t("tasks_param_tasklist_id_default"),
                             ),
                         },
                         required=["title"],
@@ -82,29 +87,29 @@ def get_tasks_tools() -> list[types.Tool]:
                 ),
                 types.FunctionDeclaration(
                     name="update_task",
-                    description="既存のタスクを更新する。タスクの内容変更、期限変更などに使用する。",
+                    description=t("tasks_func_update_task_desc"),
                     parameters=types.Schema(
                         type=types.Type.OBJECT,
                         properties={
                             "task_id": types.Schema(
                                 type=types.Type.STRING,
-                                description="更新するタスクのID",
+                                description=t("tasks_param_task_id_update"),
                             ),
                             "title": types.Schema(
                                 type=types.Type.STRING,
-                                description="新しいタイトル (変更する場合のみ)",
+                                description=t("tasks_param_title_new"),
                             ),
                             "notes": types.Schema(
                                 type=types.Type.STRING,
-                                description="新しいメモ (変更する場合のみ)",
+                                description=t("tasks_param_notes_new"),
                             ),
                             "due": types.Schema(
                                 type=types.Type.STRING,
-                                description="新しい期限日 (変更する場合のみ)",
+                                description=t("tasks_param_due_new"),
                             ),
                             "tasklist_id": types.Schema(
                                 type=types.Type.STRING,
-                                description="タスクリストID。省略時はデフォルトのリストを使用。",
+                                description=t("tasks_param_tasklist_id_default"),
                             ),
                         },
                         required=["task_id"],
@@ -112,17 +117,17 @@ def get_tasks_tools() -> list[types.Tool]:
                 ),
                 types.FunctionDeclaration(
                     name="complete_task",
-                    description="タスクを完了にする。TODOを終わらせた、タスクが完了したときに使用する。",
+                    description=t("tasks_func_complete_task_desc"),
                     parameters=types.Schema(
                         type=types.Type.OBJECT,
                         properties={
                             "task_id": types.Schema(
                                 type=types.Type.STRING,
-                                description="完了にするタスクのID",
+                                description=t("tasks_param_task_id_complete"),
                             ),
                             "tasklist_id": types.Schema(
                                 type=types.Type.STRING,
-                                description="タスクリストID。省略時はデフォルトのリストを使用。",
+                                description=t("tasks_param_tasklist_id_default"),
                             ),
                         },
                         required=["task_id"],
@@ -130,17 +135,17 @@ def get_tasks_tools() -> list[types.Tool]:
                 ),
                 types.FunctionDeclaration(
                     name="delete_task",
-                    description="タスクを削除する。不要になったタスクの削除に使用する。",
+                    description=t("tasks_func_delete_task_desc"),
                     parameters=types.Schema(
                         type=types.Type.OBJECT,
                         properties={
                             "task_id": types.Schema(
                                 type=types.Type.STRING,
-                                description="削除するタスクのID",
+                                description=t("tasks_param_task_id_delete"),
                             ),
                             "tasklist_id": types.Schema(
                                 type=types.Type.STRING,
-                                description="タスクリストID。省略時はデフォルトのリストを使用。",
+                                description=t("tasks_param_tasklist_id_default"),
                             ),
                         },
                         required=["task_id"],
@@ -154,13 +159,19 @@ def get_tasks_tools() -> list[types.Tool]:
 class TasksToolHandler:
     """Handles tasks tool calls from Gemini."""
 
-    def __init__(self, calendar_auth: CalendarAuthManager):
+    def __init__(self, calendar_auth: CalendarAuthManager, i18n: I18nManager):
         """Initialize the handler.
 
         Args:
             calendar_auth: CalendarAuthManager instance (also handles Tasks).
+            i18n: I18nManager instance for translations.
         """
         self.calendar_auth = calendar_auth
+        self.i18n = i18n
+
+    def t(self, key: str, **kwargs) -> str:
+        """Get translated string."""
+        return self.i18n.t(key, **kwargs)
 
     async def handle_function_call(
         self,
@@ -182,7 +193,7 @@ class TasksToolHandler:
         if not self.calendar_auth.is_user_authenticated(user_id):
             return {
                 "error": "not_authenticated",
-                "message": "Googleアカウントが連携されていません。`!calendar link` で連携してください。",
+                "message": self.t("tasks_not_authenticated"),
             }
 
         try:
@@ -211,7 +222,7 @@ class TasksToolHandler:
         )
 
         if not task_lists:
-            return {"task_lists": [], "message": "タスクリストがありません。"}
+            return {"task_lists": [], "message": self.t("tasks_list_empty")}
 
         return {"task_lists": task_lists, "count": len(task_lists)}
 
@@ -225,7 +236,7 @@ class TasksToolHandler:
         )
 
         if not tasks:
-            return {"tasks": [], "message": "タスクはありません。"}
+            return {"tasks": [], "message": self.t("tasks_empty")}
 
         return {"tasks": tasks, "count": len(tasks)}
 
@@ -241,7 +252,7 @@ class TasksToolHandler:
 
         return {
             "success": True,
-            "message": f"タスク「{task['title']}」を作成しました。",
+            "message": self.t("tasks_created", title=task["title"]),
             "task": task,
         }
 
@@ -258,7 +269,7 @@ class TasksToolHandler:
 
         return {
             "success": True,
-            "message": f"タスク「{task['title']}」を更新しました。",
+            "message": self.t("tasks_updated", title=task["title"]),
             "task": task,
         }
 
@@ -272,7 +283,7 @@ class TasksToolHandler:
 
         return {
             "success": True,
-            "message": f"タスク「{task['title']}」を完了にしました。",
+            "message": self.t("tasks_completed", title=task["title"]),
             "task": task,
         }
 
@@ -286,5 +297,5 @@ class TasksToolHandler:
 
         return {
             "success": True,
-            "message": "タスクを削除しました。",
+            "message": self.t("tasks_deleted"),
         }
