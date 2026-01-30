@@ -583,16 +583,48 @@ class Commands(commands.Cog):
         self, ctx: commands.Context, branch_name: str | None = None
     ):
         """Switch to a different branch."""
-        # If no branch name, show list instead
-        if branch_name is None:
-            await self.branch_list(ctx)
-            return
-
         channel_id = ctx.channel.id
+        user_id = ctx.author.id
 
         try:
             # Check if branch exists
             branches = self.bot.history_manager.list_branches(channel_id)
+            if not branches:
+                 await ctx.send(self.t("branch_list_empty"))
+                 return
+
+            # If no branch name, show interactive list
+            if branch_name is None:
+                current_branch = self.bot.history_manager.get_current_branch(channel_id)
+                # Sort branches for consistent display
+                branches.sort()
+                
+                # Register pending selection
+                self.bot.pending_branch_selections[user_id] = {
+                    "channel_id": channel_id,
+                    "branches": branches,
+                }
+
+                embed = discord.Embed(
+                    title=self.t("branch_select_title"),
+                    description=self.t("branch_select_description", branch=current_branch),
+                    color=discord.Color.blue(),
+                )
+
+                # Build numbered list
+                branch_list_str = "\n".join(
+                    f"`{i + 1}`. {name}" + (" (current)" if name == current_branch else "")
+                    for i, name in enumerate(branches)
+                )
+                
+                # If list is too long, truncate or split (simple truncation for now)
+                if len(branch_list_str) > 1024:
+                     branch_list_str = branch_list_str[:1021] + "..."
+
+                embed.add_field(name="Branches", value=branch_list_str, inline=False)
+                await ctx.send(embed=embed)
+                return
+
             if branch_name not in branches:
                 await ctx.send(self.t("branch_not_found", branch=branch_name))
                 return
@@ -612,13 +644,46 @@ class Commands(commands.Cog):
         self, ctx: commands.Context, branch_name: str | None = None
     ):
         """Delete a branch."""
-        if branch_name is None:
-            await ctx.send(self.t("branch_delete_usage"))
-            return
-
         channel_id = ctx.channel.id
+        user_id = ctx.author.id
 
         try:
+            # Check if branch exists
+            branches = self.bot.history_manager.list_branches(channel_id)
+            if not branches:
+                 await ctx.send(self.t("branch_list_empty"))
+                 return
+
+            if branch_name is None:
+                current_branch = self.bot.history_manager.get_current_branch(channel_id)
+                branches.sort()
+                
+                # Register pending selection
+                self.bot.pending_branch_selections[user_id] = {
+                    "channel_id": channel_id,
+                    "branches": branches,
+                    "action": "delete"
+                }
+
+                embed = discord.Embed(
+                    title=self.t("branch_select_title_delete"),
+                    description=self.t("branch_select_description", branch=current_branch),
+                    color=discord.Color.red(), # Red for delete
+                )
+
+                # Build numbered list
+                branch_list_str = "\n".join(
+                    f"`{i + 1}`. {name}" + (" (current)" if name == current_branch else "")
+                    for i, name in enumerate(branches)
+                )
+                
+                if len(branch_list_str) > 1024:
+                     branch_list_str = branch_list_str[:1021] + "..."
+
+                embed.add_field(name="Branches", value=branch_list_str, inline=False)
+                await ctx.send(embed=embed)
+                return
+
             self.bot.history_manager.delete_branch(channel_id, branch_name)
             await ctx.send(self.t("branch_deleted", branch=branch_name))
         except RuntimeError as e:
@@ -629,13 +694,46 @@ class Commands(commands.Cog):
     @branch.command(name="merge")
     async def branch_merge(self, ctx: commands.Context, branch_name: str | None = None):
         """Merge another branch into the current branch."""
-        if branch_name is None:
-            await ctx.send(self.t("branch_merge_usage"))
-            return
-
         channel_id = ctx.channel.id
+        user_id = ctx.author.id
 
         try:
+             # Check if branch exists
+            branches = self.bot.history_manager.list_branches(channel_id)
+            if not branches:
+                 await ctx.send(self.t("branch_list_empty"))
+                 return
+            
+            if branch_name is None:
+                current_branch = self.bot.history_manager.get_current_branch(channel_id)
+                branches.sort()
+                
+                # Register pending selection
+                self.bot.pending_branch_selections[user_id] = {
+                    "channel_id": channel_id,
+                    "branches": branches,
+                    "action": "merge"
+                }
+
+                embed = discord.Embed(
+                    title=self.t("branch_select_title_merge"),
+                    description=self.t("branch_select_description", branch=current_branch),
+                    color=discord.Color.blue(),
+                )
+
+                # Build numbered list
+                branch_list_str = "\n".join(
+                    f"`{i + 1}`. {name}" + (" (current)" if name == current_branch else "")
+                    for i, name in enumerate(branches)
+                )
+                
+                if len(branch_list_str) > 1024:
+                     branch_list_str = branch_list_str[:1021] + "..."
+
+                embed.add_field(name="Branches", value=branch_list_str, inline=False)
+                await ctx.send(embed=embed)
+                return
+
             # Commit current state before merge
             self.bot.history_manager.commit(channel_id, "Auto-save before merge")
 

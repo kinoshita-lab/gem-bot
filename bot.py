@@ -209,6 +209,9 @@ class GeminiBot(commands.Bot):
         # Pending model selections: user_id -> {channel_id, models}
         self.pending_model_selections: dict[int, dict] = {}
 
+        # Pending branch selections: user_id -> {channel_id, branches}
+        self.pending_branch_selections: dict[int, dict] = {}
+
         # Pending delete confirmations: user_id -> {channel_id, indices}
         self.pending_delete_confirmations: dict[int, dict] = {}
 
@@ -1006,6 +1009,84 @@ async def _handle_master_instruction_upload(message) -> bool:
     return False
 
 
+async def _handle_branch_selection(message) -> bool:
+    """Handle pending branch selection interaction.
+
+    Args:
+        message: Discord message object.
+
+    Returns:
+        True if handled (should stop processing), False otherwise.
+    """
+    user_id = message.author.id
+    if user_id not in bot.pending_branch_selections:
+        return False
+
+    content = message.content.strip().lower()
+
+    # Handle cancel
+    if content == "cancel":
+        del bot.pending_branch_selections[user_id]
+        await message.channel.send(bot.i18n.t("branch_select_cancelled"))
+        return True
+
+    # Handle number selection
+    if content.isdigit():
+        index = int(content) - 1
+        branches = bot.pending_branch_selections[user_id]["branches"]
+        channel_id = bot.pending_branch_selections[user_id]["channel_id"]
+        action = bot.pending_branch_selections[user_id].get("action", "switch")
+
+        if 0 <= index < len(branches):
+            selected_branch = branches[index]
+            try:
+                if action == "switch":
+                    # Switch branch (auto-commits current state)
+                    bot.history_manager.switch_branch(channel_id, selected_branch)
+                    # Reload history from disk
+                    bot._reload_history_from_disk(channel_id)
+                    await message.channel.send(
+                        bot.i18n.t("branch_switched", branch=selected_branch)
+                    )
+
+                elif action == "delete":
+                    bot.history_manager.delete_branch(channel_id, selected_branch)
+                    await message.channel.send(
+                        bot.i18n.t("branch_deleted", branch=selected_branch)
+                    )
+
+                elif action == "merge":
+                     # Commit current state before merge
+                    bot.history_manager.commit(channel_id, "Auto-save before merge")
+                    # Merge branch
+                    merged_count = bot.history_manager.merge_branch(
+                        channel_id, selected_branch
+                    )
+                    # Reload history from disk
+                    bot._reload_history_from_disk(channel_id)
+
+                    if merged_count > 0:
+                        await message.channel.send(
+                            bot.i18n.t("branch_merged", branch=selected_branch, count=merged_count)
+                        )
+                    else:
+                        await message.channel.send(bot.i18n.t("branch_merge_nothing"))
+
+                del bot.pending_branch_selections[user_id]
+                
+            except Exception as e:
+                await message.channel.send(bot.i18n.t("branch_error", error=e))
+        else:
+            await message.channel.send(
+                bot.i18n.t("branch_select_invalid_number", max=len(branches))
+            )
+        return True
+
+    # Invalid input - prompt again
+    await message.channel.send(bot.i18n.t("branch_select_prompt"))
+    return True
+
+
 async def _handle_model_selection(message) -> bool:
     """Handle pending model selection interaction.
 
@@ -1152,6 +1233,10 @@ async def on_message(message):
 
     # Handle GEMINI.md (master instruction) upload
     if await _handle_master_instruction_upload(message):
+        return
+
+    # Handle pending branch selection interaction
+    if await _handle_branch_selection(message):
         return
 
     # Handle pending model selection interaction
