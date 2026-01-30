@@ -121,6 +121,7 @@
   "help_group_history": "History & Branching",
   "help_group_tools": "Tools",
   "help_bot_description": "A Discord bot powered by Gemini API with Git-based conversation branching.\n\nJust type a message (without `!` prefix) to chat with Gemini.",
+  "help_prompt_system_description": "System prompts consist of a Master Instruction (`GEMINI.md`) and Channel Instructions (`channel_instruction.md`). Upload files to update them.",
   "help_ending_note": "Type {prefix}{command} <command> for more info on a command.",
   "help_aliases": "Aliases",
   "help_usage": "Usage",

@@ -2,6 +2,7 @@ import io
 import json
 import os
 
+import aiohttp
 import discord
 from discord.ext import commands
 from google import genai
@@ -48,9 +49,16 @@ class LocalizedHelpCommand(commands.DefaultHelpCommand):
 
     async def send_bot_help(self, mapping):
         """Send help for all commands with organized groups."""
+        description = self.t("help_bot_description")
+        
+        # Add system prompt info if available
+        prompt_desc = self.t("help_prompt_system_description")
+        if prompt_desc != "help_prompt_system_description":
+            description += "\n\n" + prompt_desc
+
         embed = discord.Embed(
             title=self.t("help_title"),
-            description=self.t("help_bot_description"),
+            description=description,
             color=discord.Color.blue(),
         )
 
@@ -535,7 +543,7 @@ class GeminiBot(commands.Bot):
 
         return base_prompt
 
-    def _extract_grounding_sources(self, response) -> list[dict]:
+    async def _extract_grounding_sources(self, response) -> list[dict]:
         """Extract source URLs and titles from grounding metadata.
 
         Args:
@@ -580,6 +588,20 @@ class GeminiBot(commands.Bot):
                 seen_uris.add(uri)
                 unique_sources.append(source)
 
+        # Resolve vertexaisearch URLs
+        async with aiohttp.ClientSession() as session:
+            for source in unique_sources:
+                uri = source.get("uri")
+                if uri and "vertexaisearch.cloud.google.com" in uri:
+                    try:
+                        async with session.head(
+                            uri, allow_redirects=True, timeout=aiohttp.ClientTimeout(total=5)
+                        ) as resp:
+                            source["uri"] = str(resp.url)
+                    except Exception:
+                        # Fallback to original URI if resolution fails
+                        pass
+
         return unique_sources
 
     def _format_grounding_sources(self, sources: list[dict]) -> str:
@@ -601,9 +623,9 @@ class GeminiBot(commands.Bot):
             uri = source.get("uri", "")
             title = source.get("title", "")
             if title:
-                lines.append(f"- [{title}]({uri})")
+                lines.append(f"- [{title}](<{uri}>)")
             else:
-                lines.append(f"- {uri}")
+                lines.append(f"- <{uri}>")
 
         return "\n".join(lines)
 
@@ -660,7 +682,7 @@ class GeminiBot(commands.Bot):
                 response_text = response.text or ""
 
                 # Extract and append grounding sources for default (search) mode
-                grounding_sources = self._extract_grounding_sources(response)
+                grounding_sources = await self._extract_grounding_sources(response)
                 if grounding_sources:
                     sources_text = self._format_grounding_sources(grounding_sources)
                     response_text = response_text + sources_text
