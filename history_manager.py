@@ -654,6 +654,63 @@ class HistoryManager:
 
         return path.read_text(encoding="utf-8")
 
+    def get_master_prompt_path(self) -> Path:
+        """Get the path to the master instruction file.
+
+        Returns:
+            Path to GEMINI.md.
+        """
+        return self._get_project_repo_path() / "GEMINI.md"
+
+    def _get_project_repo_path(self) -> Path:
+        """Get the repository path for project-wide data.
+
+        Returns:
+            Path to the project Git repository.
+        """
+        return self.base_dir / "project"
+
+    def _git_project(
+        self, *args: str, check: bool = True
+    ) -> subprocess.CompletedProcess:
+        """Execute a git command in the project repository.
+
+        Args:
+            *args: Git command arguments.
+            check: Whether to raise an exception on non-zero exit code.
+
+        Returns:
+            CompletedProcess instance with command results.
+        """
+        repo_path = self._get_project_repo_path()
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        if check and result.returncode != 0:
+            raise RuntimeError(
+                f"Git command failed: git {' '.join(args)}\n{result.stderr}"
+            )
+        return result
+
+    def _ensure_project_repo(self) -> Path:
+        """Ensure the project Git repository exists.
+
+        Returns:
+            Path to the project repository.
+        """
+        repo_path = self._get_project_repo_path()
+        repo_path.mkdir(parents=True, exist_ok=True)
+
+        if not (repo_path / ".git").exists():
+            self._git_project("init")
+            
+        return repo_path
+
     def load_system_prompt(self, channel_id: int) -> str:
         """Load system prompt.
 
@@ -667,7 +724,7 @@ class HistoryManager:
             Combined system prompt content.
         """
         # Load Master Instruction (Optional)
-        master_path = self.base_dir.parent / "GEMINI.md"
+        master_path = self._get_project_repo_path() / "GEMINI.md"
         master_content = ""
         if master_path.exists():
             try:
@@ -713,14 +770,27 @@ class HistoryManager:
         if auto_commit:
             self.commit(channel_id, "Update channel instruction")
 
-    def save_master_prompt(self, content: str) -> None:
-        """Save master instruction to root GEMINI.md.
+    def save_master_prompt(self, content: str, auto_commit: bool = True) -> None:
+        """Save master instruction to history/project/GEMINI.md.
 
         Args:
             content: Master instruction content.
+            auto_commit: Whether to automatically commit changes.
         """
-        master_path = self.base_dir.parent / "GEMINI.md"
+        self._ensure_project_repo()
+        master_path = self._get_project_repo_path() / "GEMINI.md"
         master_path.write_text(content, encoding="utf-8")
+        
+        if auto_commit:
+            # Stage all changes
+            self._git_project("add", "GEMINI.md")
+
+            # Check if there are changes to commit
+            result = self._git_project("status", "--porcelain", check=False)
+            if result.stdout.strip():
+                 # Commit
+                self._git_project("commit", "-m", "Update master instruction")
+
 
     def _get_global_config_path(self) -> Path:
         """Get the path to the global config file.

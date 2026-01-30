@@ -669,7 +669,7 @@ class Commands(commands.Cog):
         """Show the current master system prompt."""
         try:
             # Load master prompt directly from file
-            master_path = self.bot.history_manager.base_dir.parent / "GEMINI.md"
+            master_path = self.bot.history_manager.get_master_prompt_path()
             content = master_path.read_text(encoding="utf-8") if master_path.exists() else ""
 
             if not content.strip():
@@ -698,7 +698,7 @@ class Commands(commands.Cog):
     async def prompt_download(self, ctx: commands.Context):
         """Download the current master system prompt as a file."""
         try:
-            master_path = self.bot.history_manager.base_dir.parent / "GEMINI.md"
+            master_path = self.bot.history_manager.get_master_prompt_path()
             content = master_path.read_text(encoding="utf-8") if master_path.exists() else ""
 
             if not content.strip():

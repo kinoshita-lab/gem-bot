@@ -48,12 +48,12 @@ The bot uses a two-level prompt system for flexible AI behavior customization:
 
 The master instruction applies to **all channels** and defines the bot's base personality and behavior.
 
-**Location**: `GEMINI.md` in the project root (git-ignored, manually managed)
+**Location**: `history/project/GEMINI.md` (managed in separate Git repository)
 
 **Management**:
 - **View**: `!system_prompt show` - Display the current master instruction
 - **Download**: `!system_prompt download` - Download as `GEMINI.md` file for editing
-- **Edit**: Upload a file named `GEMINI.md` to any channel to update
+- **Edit**: Upload a file named `GEMINI.md` to any channel to update (automatically committed)
 
 **Example**:
 ```
@@ -71,7 +71,7 @@ Guidelines:
 - Set organization-wide guidelines or policies
 - Configure default response style and tone
 
-**Git management**: NOT version controlled (in `.gitignore`). Manage manually or with your own version control.
+**Git management**: Automatically committed to `history/project` repository.
 
 ### Channel Instruction (Per-channel)
 
@@ -146,12 +146,15 @@ Located in `history/{channel_id}/`:
   - Committed when images are uploaded in conversations
   - Preserved across branches
 
-#### NOT Git-managed Files
+#### Project Data (Global Git Repository)
 
-- **`GEMINI.md`** (project root) - Master instruction
-  - Excluded via `.gitignore`
-  - Reason: Allows flexible manual editing without Git overhead
-  - You can use your own version control separately if desired
+Located in `history/project/`:
+
+- **`GEMINI.md`** - Master instruction
+  - Automatically committed when updated via file upload
+  - Managed in a separate Git repository from channel histories
+
+#### NOT Git-managed Files
 
 - **`history/config.json`** - Global bot configuration
   - Contains channel models and generation settings
@@ -174,8 +177,10 @@ Located in `history/{channel_id}/`:
 - Allows exporting conversations with full context
 - Each channel operates independently
 
-**Global/sensitive data (NOT Git-managed)**:
-- **`GEMINI.md`**: Designed for manual editing and sharing. You maintain it outside Git as needed.
+**Project data (Git-managed)**:
+- **`GEMINI.md`**: Managed in `history/project` repository for version control of the master prompt.
+
+**Configuration/secrets (NOT Git-managed)**:
 - **Configuration/secrets**: Security best practice - never commit credentials
 - **Global settings**: Automatically managed by the bot across all channels
 
@@ -192,7 +197,11 @@ The bot automatically commits changes for:
    - When using `!channel_prompt clear`
    - Commit messages: `"Update channel instruction"`, `"Initialize empty channel instruction"`
 
-3. **Branch operations**
+3. **Master instruction changes**
+    - When uploading `GEMINI.md`
+    - Commit message: `"Update master instruction"`
+
+4. **Branch operations**
    - Auto-saves before switching: `"Auto-save before branch switch"`
    - Records merges: `"Merge branch 'branch-name'"`
 
@@ -223,14 +232,15 @@ Main conversation (main branch)
 history/
 ├── config.json                      # Global settings (NOT in Git)
 ├── tokens/                          # OAuth tokens (NOT in Git)
+├── project/                         # Project data (Git repository)
+│   ├── .git/
+│   └── GEMINI.md                    # Master instruction (Git-managed)
 └── {channel_id}/                    # Per-channel (Git repository)
     ├── .git/                        # Git metadata
     ├── conversation.json            # Conversation history (Git-managed)
     ├── channel_instruction.md       # Channel prompt (Git-managed)
     └── files/                       # Images (Git-managed)
         └── img_20240130_123456_001.png
-
-GEMINI.md                            # Master instruction (NOT in Git, project root)
 ```
 
 ### Benefits
@@ -251,12 +261,12 @@ GEMINI.md                            # Master instruction (NOT in Git, project r
 
 マスター指示書は**全チャンネル**に適用され、ボットの基本的な性格と動作を定義します。
 
-**保存場所**: プロジェクトルートの `GEMINI.md`（Git管理外、手動管理）
+**保存場所**: `history/project/GEMINI.md`（別Gitリポジトリで管理）
 
 **管理方法**:
 - **表示**: `!system_prompt show` - 現在のマスター指示書を表示
 - **ダウンロード**: `!system_prompt download` - `GEMINI.md` ファイルとしてダウンロードして編集
-- **編集**: `GEMINI.md` という名前のファイルを任意のチャンネルにアップロード
+- **編集**: `GEMINI.md` という名前のファイルを任意のチャンネルにアップロードして更新（自動コミット）
 
 **記述例**:
 ```
@@ -274,7 +284,7 @@ GEMINI.md                            # Master instruction (NOT in Git, project r
 - 組織全体のガイドラインやポリシーを設定
 - デフォルトの応答スタイルとトーンを設定
 
-**Git管理**: バージョン管理されません（`.gitignore`に含まれる）。手動または独自のバージョン管理で管理してください。
+**Git管理**: `history/project` リポジトリに自動コミットされます。
 
 ### チャンネル個別指示
 
@@ -349,12 +359,15 @@ Geminiに送信される最終的なプロンプトは以下のように構成�
   - 会話内で画像がアップロードされた際にコミット
   - ブランチ間で保持される
 
-#### Git管理対象外ファイル
+#### プロジェクトデータ（グローバルGitリポジトリ）
 
-- **`GEMINI.md`**（プロジェクトルート）- マスター指示書
-  - `.gitignore` で除外
-  - 理由: Git の煩雑さなしに柔軟な手動編集を可能にする
-  - 必要に応じて独自にバージョン管理を使用可能
+`history/project/` に配置:
+
+- **`GEMINI.md`** - マスター指示書
+  - ファイルアップロードで更新時に自動コミット
+  - チャンネル履歴とは別のGitリポジトリで管理
+
+#### Git管理対象外ファイル
 
 - **`history/config.json`** - グローバルボット設定
   - チャンネルのモデルと生成設定を含む
@@ -377,8 +390,10 @@ Geminiに送信される最終的なプロンプトは以下のように構成�
 - 完全なコンテキスト付きで会話をエクスポート可能
 - 各チャンネルが独立して動作
 
-**グローバル/機密データ（Git管理外）**:
-- **`GEMINI.md`**: 手動編集と共有のために設計。必要に応じてGit外で管理
+**プロジェクトデータ（Git管理）**:
+- **`GEMINI.md`**: マスタープロンプトのバージョン管理のため `history/project` リポジトリで管理
+
+**設定/機密情報（Git管理外）**:
 - **設定/機密情報**: セキュリティのベストプラクティス - 認証情報はコミットしない
 - **グローバル設定**: 全チャンネルでボットが自動管理
 
@@ -395,7 +410,11 @@ Geminiに送信される最終的なプロンプトは以下のように構成�
    - `!channel_prompt clear` を使用した時
    - コミットメッセージ: `"Update channel instruction"`, `"Initialize empty channel instruction"`
 
-3. **ブランチ操作**
+3. **マスター指示書の変更**
+    - `GEMINI.md` をアップロードした時
+    - コミットメッセージ: `"Update master instruction"`
+
+4. **ブランチ操作**
    - 切り替え前の自動保存: `"Auto-save before branch switch"`
    - マージの記録: `"Merge branch 'ブランチ名'"`
 
@@ -426,14 +445,15 @@ Geminiに送信される最終的なプロンプトは以下のように構成�
 history/
 ├── config.json                      # グローバル設定（Git管理外）
 ├── tokens/                          # OAuth トークン（Git管理外）
+├── project/                         # プロジェクトデータ（Gitリポジトリ）
+│   ├── .git/
+│   └── GEMINI.md                    # マスター指示書（Git管理）
 └── {channel_id}/                    # チャンネルごと（Gitリポジトリ）
     ├── .git/                        # Git メタデータ
     ├── conversation.json            # 会話履歴（Git管理）
     ├── channel_instruction.md       # チャンネルプロンプト（Git管理）
     └── files/                       # 画像（Git管理）
         └── img_20240130_123456_001.png
-
-GEMINI.md                            # マスター指示書（Git管理外、プロジェクトルート）
 ```
 
 ### メリット
@@ -1163,10 +1183,11 @@ gem-bot/                    # Repository root
 ├── locales/
 │   ├── ja.json             # Japanese translations
 │   └── en.json             # English translations
-├── GEMINI.md               # Master instruction (git-ignored)
-├── history/                # Conversation data (git-ignored)
+├── history/                # Conversation data
 │   ├── config.json         # Global settings
 │   ├── tokens/             # Google OAuth tokens (git-ignored)
+│   ├── project/            # Project data (Git repository)
+│   │   └── GEMINI.md       # Master instruction (Git-managed)
 │   └── {channel_id}/       # Per-channel data
 │       ├── .git/           # Git repository
 │       ├── conversation.json  # Conversation history
