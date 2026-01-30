@@ -160,6 +160,8 @@
   "grounding_sources_header": "\n\n---\n**参考情報:**",
   "image_default_prompt": "この画像について説明してください。",
 
+  "latex_render_error": "数式のレンダリングに失敗しました: {error}",
+
   "tasks_func_list_task_lists_desc": "ユーザーのGoogle Tasksのタスクリスト一覧を取得する。どのリストがあるか確認するときに使用する。",
   "tasks_func_list_tasks_desc": "タスクリストからタスク一覧を取得する。TODOリストの確認、やるべきことの確認に使用する。",
   "tasks_func_create_task_desc": "新しいタスクを作成する。TODOの追加、やることリストへの追加に使用する。",

@@ -1,3 +1,4 @@
+import io
 import json
 import os
 
@@ -12,6 +13,7 @@ from i18n import I18nManager
 from calendar_manager import CalendarAuthManager
 from calendar_tools import get_calendar_tools, CalendarToolHandler
 from tasks_tools import get_tasks_tools, TasksToolHandler
+from latex_renderer import LatexRenderer
 
 
 class LocalizedHelpCommand(commands.DefaultHelpCommand):
@@ -231,6 +233,9 @@ class GeminiBot(commands.Bot):
         # Available modes: "default" (Google Search), "calendar"
         self.channel_tool_mode: dict[int, str] = {}
 
+        # LaTeX renderer for math formulas
+        self.latex_renderer = LatexRenderer(enabled=True)
+
     def get_tool_mode(self, channel_id: int) -> str:
         """Get the current tool mode for a channel.
 
@@ -352,16 +357,83 @@ class GeminiBot(commands.Bot):
         """
         self.history_manager.save_model(channel_id, model)
 
-    async def send_response(self, channel, response_text: str):
-        """Send a response to a channel, splitting if necessary."""
-        # Discord has a 2000 character limit per message.
-        if len(response_text) > 2000:
-            for i in range(0, len(response_text), 2000):
-                await channel.send(response_text[i : i + 2000])
+    async def _send_text(self, channel, text: str) -> None:
+        """Send text to a channel, splitting if over 2000 characters.
+
+        Empty or whitespace-only text is skipped.
+
+        Args:
+            channel: Discord channel to send to.
+            text: Text to send.
+        """
+        text = text.strip()
+        if not text:
+            return
+
+        if len(text) <= 2000:
+            await channel.send(text)
         else:
-            await channel.send(
-                response_text if response_text else "No response from Gemini."
-            )
+            # Split into 2000 character chunks
+            for i in range(0, len(text), 2000):
+                chunk = text[i : i + 2000]
+                if chunk.strip():
+                    await channel.send(chunk)
+
+    async def send_response(self, channel, response_text: str):
+        """Send a response to a channel with inline LaTeX rendering.
+
+        If the response contains LaTeX formulas ($$...$$ or \\[...\\]),
+        the text is split at formula positions. For each formula:
+        1. The preceding text + original TeX markup is sent as text
+        2. The rendered formula image is sent
+
+        Args:
+            channel: Discord channel to send to.
+            response_text: Response text, possibly containing LaTeX.
+        """
+        # Handle empty response
+        if not response_text:
+            await channel.send("No response from Gemini.")
+            return
+
+        # If no LaTeX or rendering disabled, send as plain text
+        if not self.latex_renderer.enabled or not self.latex_renderer.has_latex(response_text):
+            await self._send_text(channel, response_text)
+            return
+
+        # Split text by formula positions and send segments in order
+        segments = self.latex_renderer.split_text_by_formulas(response_text)
+
+        # Buffer to accumulate text before sending with formula
+        text_buffer = ""
+
+        for segment in segments:
+            if segment["type"] == "text":
+                # Accumulate text
+                text_buffer += segment["content"]
+            else:
+                # Formula segment: send accumulated text + original TeX markup
+                text_to_send = text_buffer + segment["original"]
+                await self._send_text(channel, text_to_send)
+                text_buffer = ""
+
+                # Render and send formula as image
+                image_data = await self.latex_renderer.render_formula(
+                    segment["content"],
+                )
+                if image_data:
+                    try:
+                        file = discord.File(
+                            io.BytesIO(image_data),
+                            filename="formula.png",
+                        )
+                        await channel.send(file=file)
+                    except Exception as e:
+                        print(f"Failed to send LaTeX image: {e}")
+
+        # Send any remaining text after the last formula
+        if text_buffer:
+            await self._send_text(channel, text_buffer)
 
     # =========================================================================
     # ask_gemini Helper Methods

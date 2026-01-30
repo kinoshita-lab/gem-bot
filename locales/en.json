@@ -160,6 +160,8 @@
   "grounding_sources_header": "\n\n---\n**References:**",
   "image_default_prompt": "Please describe this image.",
 
+  "latex_render_error": "Failed to render formula: {error}",
+
   "tasks_func_list_task_lists_desc": "Get the user's Google Tasks task lists. Use this to check what lists are available.",
   "tasks_func_list_tasks_desc": "Get tasks from a task list. Use this to check TODOs or things to do.",
   "tasks_func_create_task_desc": "Create a new task. Use this to add TODOs or items to the to-do list.",
