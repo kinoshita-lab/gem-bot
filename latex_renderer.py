@@ -57,9 +57,27 @@ $\displaystyle FORMULA $
         # Track matched positions to avoid overlapping matches
         matched_positions: set[int] = set()
 
+        # First, identify code blocks to exclude their content from formula matching
+        # Matches ```...``` (multi-line) or `...` (inline)
+        code_block_pattern = r"(`{1,3})[\s\S]*?\1"
+        code_block_ranges = []
+        for match in re.finditer(code_block_pattern, text):
+            code_block_ranges.append(match.span())
+
         for pattern, formula_type in self.LATEX_PATTERNS:
             for match in re.finditer(pattern, text, re.DOTALL):
                 start, end = match.span()
+                
+                # Check if match is inside a code block
+                in_code_block = False
+                for cb_start, cb_end in code_block_ranges:
+                    if start >= cb_start and end <= cb_end:
+                        in_code_block = True
+                        break
+                
+                if in_code_block:
+                    continue
+
                 # Skip if this position overlaps with already matched content
                 if any(start <= pos < end for pos in matched_positions):
                     continue

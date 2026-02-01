@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import re
 
 import aiohttp
 import discord
@@ -372,9 +373,10 @@ class GeminiBot(commands.Bot):
         self.history_manager.save_model(channel_id, model)
 
     async def _send_text(self, channel, text: str) -> None:
-        """Send text to a channel, splitting if over 2000 characters.
-
-        Empty or whitespace-only text is skipped.
+        """Send text to a channel, splitting intelligently.
+        
+        Ensures code blocks are sent as separate messages and not split mid-block
+        if possible. Handles splitting of messages > 2000 chars.
 
         Args:
             channel: Discord channel to send to.
@@ -384,14 +386,153 @@ class GeminiBot(commands.Bot):
         if not text:
             return
 
-        if len(text) <= 2000:
-            await channel.send(text)
-        else:
-            # Split into 2000 character chunks
-            for i in range(0, len(text), 2000):
-                chunk = text[i : i + 2000]
-                if chunk.strip():
-                    await channel.send(chunk)
+        # Split text by code blocks to treat them as independent parts
+        # Regex captures the delimiter (code block) so we keep it in the list
+        segments = re.split(r"(```[\s\S]*?```)", text)
+
+        for segment in segments:
+            if not segment.strip():
+                continue
+
+            if segment.startswith("```") and segment.endswith("```"):
+                # -- CODE BLOCK --
+                if len(segment) <= 2000:
+                    await channel.send(segment)
+                else:
+                    # Handle massive code blocks > 2000 chars
+                    # We must split, but try to preserve code block formatting for each chunk
+                    content = segment[3:-3] # Remove outer backticks
+                    
+                    # Extract language if present
+                    lang = ""
+                    first_newline = content.find("\n")
+                    if first_newline != -1:
+                        possible_lang = content[:first_newline].strip()
+                        if possible_lang.isalnum(): # Simple check for lang tag
+                            lang = possible_lang
+                            content = content[first_newline+1:] # Remove lang line from content for splitting
+                    
+                    # Maximum content size per chunk (2000 - wrappers)
+                    # Wrapper overhead: ```lang\n...``` -> 3 + len(lang) + 1 + 3 = 7 + len(lang)
+                    wrapper_overhead = 7 + len(lang)
+                    chunk_size = 2000 - wrapper_overhead
+                    
+                    for i in range(0, len(content), chunk_size):
+                        chunk_content = content[i : i + chunk_size]
+                        # Reconstruct code block for this chunk
+                        chunk_msg = f"```{lang}\n{chunk_content}```"
+                        await channel.send(chunk_msg)
+
+            else:
+                # -- REGULAR TEXT --
+                # Split into 2000 character chunks
+                # We can be smarter here too: split by newlines if possible
+                if len(segment) <= 2000:
+                    await channel.send(segment)
+                else:
+                    current_chunk = ""
+                    lines = segment.split("\n")
+                    for line in lines:
+                        # +1 for the newline we'll add back
+                        if len(current_chunk) + len(line) + 1 > 2000:
+                            if current_chunk:
+                                await channel.send(current_chunk)
+                                current_chunk = ""
+                            
+                            # If a single line is massive, we still have to hard split it
+                            if len(line) > 2000:
+                                for i in range(0, len(line), 2000):
+                                    await channel.send(line[i:i+2000])
+                            else:
+                                current_chunk = line
+                        else:
+                            if current_chunk:
+                                current_chunk += "\n" + line
+                            else:
+                                current_chunk = line
+                    
+                    if current_chunk:
+                        await channel.send(current_chunk)
+
+    def _format_tables(self, text: str) -> str:
+        """Wrap Markdown tables in code blocks for better Discord display.
+
+        Preserves existing code blocks to avoid double-wrapping.
+
+        Args:
+            text: Original markdown text.
+
+        Returns:
+            Text with tables wrapped in code blocks.
+        """
+        # 1. Identify existing code blocks to protect them
+        code_block_ranges = []
+        # Matches ```...``` (multi-line) or `...` (inline)
+        for match in re.finditer(r"(`{1,3})[\s\S]*?\1", text):
+            code_block_ranges.append(match.span())
+
+        lines = text.split("\n")
+        output_lines = []
+        in_table = False
+        table_buffer = []
+
+        # Helper to check if a line is inside an existing code block
+        def is_in_code_block(line_index, lines):
+            # Approximate character position
+            # This is a bit expensive but accurate enough for message usage
+            current_pos = 0
+            for i in range(line_index):
+                current_pos += len(lines[i]) + 1  # +1 for newline
+            
+            line_end = current_pos + len(lines[line_index])
+            
+            for start, end in code_block_ranges:
+                # If the line overlaps with a code block
+                if (current_pos >= start and current_pos < end) or \
+                   (line_end > start and line_end <= end) or \
+                   (start >= current_pos and end <= line_end):
+                    return True
+            return False
+
+        # Regex for table separator row (e.g., |---| or |:---:|)
+        separator_pattern = re.compile(r"^\s*\|?(\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
+
+        for i, line in enumerate(lines):
+            # If we are already building a table
+            if in_table:
+                # Check if this line continues the table (starts with |)
+                if line.strip().startswith("|"):
+                    table_buffer.append(line)
+                else:
+                    # End of table
+                    output_lines.append("```")
+                    output_lines.extend(table_buffer)
+                    output_lines.append("```")
+                    in_table = False
+                    table_buffer = []
+                    output_lines.append(line)
+                continue
+
+            # Check for table start (look ahead for separator)
+            if not is_in_code_block(i, lines):
+                # Potential header: current line has |, next line is separator
+                if "|" in line and i + 1 < len(lines):
+                    next_line = lines[i + 1]
+                    if separator_pattern.match(next_line):
+                        # Start of new table
+                        in_table = True
+                        table_buffer.append(line)
+                        continue
+
+            output_lines.append(line)
+
+        # Flush any remaining table buffer
+        if in_table:
+            output_lines.append("```")
+            output_lines.extend(table_buffer)
+            output_lines.append("```")
+
+        return "\n".join(output_lines)
 
     async def send_response(self, channel, response_text: str):
         """Send a response to a channel with inline LaTeX rendering.
@@ -409,6 +550,9 @@ class GeminiBot(commands.Bot):
         if not response_text:
             await channel.send("No response from Gemini.")
             return
+
+        # Format tables to be wrapped in code blocks
+        response_text = self._format_tables(response_text)
 
         # If no LaTeX or rendering disabled, send as plain text
         if not self.latex_renderer.enabled or not self.latex_renderer.has_latex(response_text):
