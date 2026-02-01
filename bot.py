@@ -682,13 +682,13 @@ class GeminiBot(commands.Bot):
         if mode_instruction:
             if base_prompt:
                 # Structure with XML tags to clarify priority
-                return f"""<base-instructions>
-{base_prompt}
-</base-instructions>
-
-<priority-instructions>
+                return f"""<priority-instructions>
 {mode_instruction}
-</priority-instructions>"""
+</priority-instructions>
+
+<base-instructions>
+{base_prompt}
+</base-instructions>"""
             return mode_instruction
 
         return base_prompt
@@ -812,6 +812,7 @@ class GeminiBot(commands.Bot):
                 "system_instruction": self._build_system_prompt(channel_id),
                 "tools": self._get_tools_for_mode(channel_id),
             }
+
             config_params.update(self.history_manager.load_generation_config(channel_id))
 
             # Call Gemini API

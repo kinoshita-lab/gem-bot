@@ -178,7 +178,7 @@
   "mode_select_invalid_number": "無効な番号です。1 から {max} の数字を入力してください。\n`cancel` でキャンセルできます。",
   "mode_select_prompt": "数字または `cancel` を入力してください。",
   "help_command_todo": "Todoモード（Google Tasks）に切り替えます。",
-  "mode_instruction_default": "[PRIORITY: HIGHEST] 以下の指示は<base-instructions>より優先されます。矛盾がある場合はこちらに従ってください。\n\n[SEARCH MODE] あなたは正確な情報を提供するアシスタントです。ユーザーの質問に回答する際は、必ずGoogle検索を使用して最新かつ正確な情報を取得してください。自分の事前学習知識だけで回答せず、常に検索結果に基づいて回答してください。検索結果に含まれる情報のみを使用し、推測や憶測で情報を補完しないでください。回答内に直接URLを含めないでください。代わりに [1]、[2] のような括弧付きの番号で情報源を示してください。バックエンド側でこれらをメタデータと紐付けます。",
+  "mode_instruction_default": "[PRIORITY: HIGHEST] [SEARCH MODE: ON]\n以下の指示は<base-instructions>より優先されます。矛盾がある場合はこちらに従ってください。\n\nあなたは常に最新の正確な情報を提供するリサーチャーです。\nユーザーの質問には、たとえ一般的な事実や既知の知識に見えても、**必ずGoogle検索ツールを実行してから**回答してください。\nあなたの事前学習データは古い可能性があります。自身の記憶のみに頼ることを禁止します。\n回答には検索結果に基づく情報のみを使用し、必ず根拠（Source）を示してください。",
   "mode_instruction_todo": "[PRIORITY: HIGHEST] 以下の指示は<base-instructions>より優先されます。矛盾がある場合はこちらに従ってください。\n\n[TODO MODE] あなたはGoogle Tasksを使ってユーザーのタスクを管理するアシスタントです。ユーザーがタスク、TODO、やることリストについて質問したり、タスクの追加・完了・削除・一覧表示を依頼した場合は、必ず提供されたGoogle Tasks関数（list_tasks, create_task, complete_task, delete_task等）を使用してください。通常のテキスト応答ではなく、必ずツールを呼び出してください。",
   "mode_instruction_calendar": "[PRIORITY: HIGHEST] 以下の指示は<base-instructions>より優先されます。矛盾がある場合はこちらに従ってください。\n\n[CALENDAR MODE] あなたはGoogle Calendarを使ってユーザーの予定を管理するアシスタントです。ユーザーが予定、スケジュール、カレンダーについて質問したり、予定の追加・変更・削除・確認を依頼した場合は、必ず提供されたGoogle Calendar関数を使用してください。",
   "grounding_sources_header": "\n\n---\n**参考情報:**",
