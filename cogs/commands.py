@@ -703,11 +703,11 @@ class Commands(commands.Cog):
             if not branches:
                  await ctx.send(self.t("branch_list_empty"))
                  return
-            
+
             if branch_name is None:
                 current_branch = self.bot.history_manager.get_current_branch(channel_id)
                 branches.sort()
-                
+
                 # Register pending selection
                 self.bot.pending_branch_selections[user_id] = {
                     "channel_id": channel_id,
@@ -726,7 +726,7 @@ class Commands(commands.Cog):
                     f"`{i + 1}`. {name}" + (" (current)" if name == current_branch else "")
                     for i, name in enumerate(branches)
                 )
-                
+
                 if len(branch_list_str) > 1024:
                      branch_list_str = branch_list_str[:1021] + "..."
 
@@ -751,6 +751,28 @@ class Commands(commands.Cog):
                 )
             else:
                 await ctx.send(self.t("branch_merge_nothing"))
+        except RuntimeError as e:
+            await ctx.send(self.t("branch_error", error=e))
+        except Exception as e:
+            await ctx.send(self.t("branch_error", error=e))
+
+    @branch.command(name="rename")
+    async def branch_rename(
+        self, ctx: commands.Context, new_name: str | None = None
+    ):
+        """Rename current branch."""
+        channel_id = ctx.channel.id
+
+        if new_name is None:
+            await ctx.send(self.t("branch_rename_usage"))
+            return
+
+        try:
+            # Rename current branch
+            old_name = self.bot.history_manager.get_current_branch(channel_id)
+            self.bot.history_manager.rename_branch(channel_id, new_name)
+
+            await ctx.send(self.t("branch_renamed", old=old_name, new=new_name))
         except RuntimeError as e:
             await ctx.send(self.t("branch_error", error=e))
         except Exception as e:

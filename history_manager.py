@@ -403,6 +403,26 @@ class HistoryManager:
         # Force delete the branch
         self._git(channel_id, "branch", "-D", branch_name)
 
+    def rename_branch(self, channel_id: int, new_name: str) -> None:
+        """Rename current branch.
+
+        Args:
+            channel_id: Discord channel ID.
+            new_name: New name for the branch.
+
+        Raises:
+            RuntimeError: If branch name already exists.
+        """
+        self._ensure_repo(channel_id)
+
+        # Check if new name already exists
+        existing = self.list_branches(channel_id)
+        if new_name in existing:
+            raise RuntimeError(self.t("history_branch_already_exists", branch=new_name))
+
+        # Rename the current branch
+        self._git(channel_id, "branch", "-m", new_name)
+
     def merge_branch(
         self, channel_id: int, source_branch: str, auto_commit: bool = True
     ) -> int:
