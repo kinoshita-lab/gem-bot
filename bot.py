@@ -16,6 +16,7 @@ from calendar_manager import CalendarAuthManager
 from calendar_tools import get_calendar_tools, CalendarToolHandler
 from tasks_tools import get_tasks_tools, TasksToolHandler
 from latex_renderer import LatexRenderer
+from table_renderer import TableRenderer
 
 
 # Load environment variables
@@ -114,6 +115,9 @@ class GeminiBot(commands.Bot):
 
         # LaTeX renderer for math formulas
         self.latex_renderer = LatexRenderer(enabled=True)
+
+        # Table renderer for Markdown tables
+        self.table_renderer = TableRenderer(enabled=True)
 
     def get_tool_mode(self, channel_id: int) -> str:
         """Get the current tool mode for a channel.
@@ -417,62 +421,100 @@ class GeminiBot(commands.Bot):
         return "\n".join(output_lines)
 
     async def send_response(self, channel, response_text: str):
-        """Send a response to a channel with inline LaTeX rendering.
+        """Send a response to a channel with inline LaTeX and table rendering.
 
-        If the response contains LaTeX formulas ($$...$$ or \\[...\\]),
-        the text is split at formula positions. For each formula:
-        1. The preceding text + original TeX markup is sent as text
-        2. The rendered formula image is sent
+        If the response contains LaTeX formulas ($$...$$) or Markdown tables,
+        the text is split at those positions and rendered as images.
 
         Args:
             channel: Discord channel to send to.
-            response_text: Response text, possibly containing LaTeX.
+            response_text: Response text, possibly containing LaTeX or tables.
         """
         # Handle empty response
         if not response_text:
             await channel.send("No response from Gemini.")
             return
 
-        # Format tables to be wrapped in code blocks
-        response_text = self._format_tables(response_text)
+        # Check for formulas or tables
+        has_formulas = self.latex_renderer.enabled and self.latex_renderer.has_latex(response_text)
+        has_tables = self.table_renderer.enabled and self.table_renderer.has_tables(response_text)
 
-        # If no LaTeX or rendering disabled, send as plain text
-        if not self.latex_renderer.enabled or not self.latex_renderer.has_latex(response_text):
+        # If neither, send as plain text with table formatting fallback
+        if not has_formulas and not has_tables:
             await self._send_text(channel, response_text)
             return
 
-        # Split text by formula positions and send segments in order
-        segments = self.latex_renderer.split_text_by_formulas(response_text)
+        # Split text by tables first (tables contain priority)
+        if has_tables:
+            segments = self.table_renderer.split_text_by_tables(response_text)
+        else:
+            # No tables, just check for formulas
+            segments = [{"type": "text", "content": response_text}]
 
-        # Buffer to accumulate text before sending with formula
         text_buffer = ""
 
         for segment in segments:
             if segment["type"] == "text":
-                # Accumulate text
-                text_buffer += segment["content"]
-            else:
-                # Formula segment: send accumulated text + original TeX markup
-                text_to_send = text_buffer + segment["original"]
-                await self._send_text(channel, text_to_send)
-                text_buffer = ""
+                # Check for formulas in this text segment
+                if self.latex_renderer.enabled and self.latex_renderer.has_latex(segment["content"]):
+                    # Further split by formulas
+                    formula_segments = self.latex_renderer.split_text_by_formulas(segment["content"])
 
-                # Render and send formula as image
-                image_data = await self.latex_renderer.render_formula(
-                    segment["content"],
+                    for formula_segment in formula_segments:
+                        if formula_segment["type"] == "text":
+                            text_buffer += formula_segment["content"]
+                        else:
+                            # Send accumulated text + formula
+                            text_to_send = text_buffer + formula_segment["original"]
+                            await self._send_text(channel, text_to_send)
+                            text_buffer = ""
+
+                            # Render and send formula as image
+                            image_data = await self.latex_renderer.render_formula(
+                                formula_segment["content"],
+                            )
+                            if image_data:
+                                try:
+                                    file = discord.File(
+                                        io.BytesIO(image_data),
+                                        filename="formula.png",
+                                    )
+                                    await channel.send(file=file)
+                                except Exception as e:
+                                    print(f"Failed to send LaTeX image: {e}")
+                else:
+                    # No formulas, just accumulate text
+                    text_buffer += segment["content"]
+
+            else:  # table segment
+                # Send accumulated text first
+                if text_buffer.strip():
+                    await self._send_text(channel, text_buffer)
+                    text_buffer = ""
+
+                # Try to render table as image
+                table_data = segment["content"]
+                image_data = await self.table_renderer.render_table(
+                    table_data["headers"],
+                    table_data["rows"],
                 )
+
                 if image_data:
                     try:
                         file = discord.File(
                             io.BytesIO(image_data),
-                            filename="formula.png",
+                            filename="table.png",
                         )
                         await channel.send(file=file)
                     except Exception as e:
-                        print(f"Failed to send LaTeX image: {e}")
+                        print(f"Failed to send table image: {e}")
+                else:
+                    # Fallback to code block formatting
+                    fallback_table = self._format_tables(segment["original"])
+                    await self._send_text(channel, fallback_table)
 
-        # Send any remaining text after the last formula
-        if text_buffer:
+        # Send any remaining text
+        if text_buffer.strip():
             await self._send_text(channel, text_buffer)
 
     # =========================================================================

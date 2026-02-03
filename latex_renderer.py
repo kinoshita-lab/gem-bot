@@ -1,7 +1,7 @@
 """LaTeX rendering utilities for Discord output.
 
 Detects LaTeX formulas in text and renders them as PNG images
-using local LaTeX installation (latex + dvipng).
+using local LaTeX installation (platex + dvipdfmx + Ghostscript).
 """
 
 import asyncio
@@ -11,7 +11,10 @@ from pathlib import Path
 
 
 class LatexRenderer:
-    """Renders LaTeX formulas to PNG images using local LaTeX installation."""
+    """Renders LaTeX formulas to PNG images using local LaTeX installation.
+
+    Uses pLaTeX, dvipdfmx, and Ghostscript for rendering.
+    """
 
     # LaTeX patterns - only display math (complex formulas)
     # Inline math ($...$) is excluded as it's usually simple and readable as text
@@ -22,7 +25,7 @@ class LatexRenderer:
     ]
 
     # LaTeX template for math formulas (white background, black text)
-    LATEX_TEMPLATE = r"""\documentclass[preview,border=2pt]{standalone}
+    LATEX_TEMPLATE = r"""\documentclass[dvipdfmx]{jsarticle}
 \usepackage{amsmath,amssymb}
 \usepackage{xcolor}
 \pagecolor{white}
@@ -121,7 +124,8 @@ $\displaystyle FORMULA $
             tmppath = Path(tmpdir)
             tex_file = tmppath / "formula.tex"
             dvi_file = tmppath / "formula.dvi"
-            png_file = tmppath / "formula1.png"  # dvipng adds number suffix
+            pdf_file = tmppath / "formula.pdf"
+            png_file = tmppath / "formula.png"
 
             # Generate LaTeX source
             tex_content = self.LATEX_TEMPLATE.replace("FORMULA", latex)
@@ -130,9 +134,9 @@ $\displaystyle FORMULA $
             tex_file.write_text(tex_content, encoding="utf-8")
 
             try:
-                # Run latex to generate .dvi
-                latex_proc = await asyncio.create_subprocess_exec(
-                    "latex",
+                # Run platex to generate .dvi
+                platex_proc = await asyncio.create_subprocess_exec(
+                    "platex",
                     "-interaction=nonstopmode",
                     "-halt-on-error",
                     "-output-directory=" + str(tmppath),
@@ -141,25 +145,42 @@ $\displaystyle FORMULA $
                     stderr=asyncio.subprocess.DEVNULL,
                     cwd=tmpdir,
                 )
-                await asyncio.wait_for(latex_proc.wait(), timeout=30.0)
+                await asyncio.wait_for(platex_proc.wait(), timeout=30.0)
 
-                if latex_proc.returncode != 0 or not dvi_file.exists():
+                if platex_proc.returncode != 0 or not dvi_file.exists():
                     return None
 
-                # Run dvipng to generate .png (no -bg Transparent to keep white background)
-                dvipng_proc = await asyncio.create_subprocess_exec(
-                    "dvipng",
-                    "-D", str(dpi),
-                    "-T", "tight",
-                    "-o", str(png_file),
+                # Run dvipdfmx to generate .pdf
+                dvipdfmx_proc = await asyncio.create_subprocess_exec(
+                    "dvipdfmx",
                     str(dvi_file),
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
                     cwd=tmpdir,
                 )
-                await asyncio.wait_for(dvipng_proc.wait(), timeout=30.0)
+                await asyncio.wait_for(dvipdfmx_proc.wait(), timeout=30.0)
 
-                if dvipng_proc.returncode != 0 or not png_file.exists():
+                if dvipdfmx_proc.returncode != 0 or not pdf_file.exists():
+                    return None
+
+                # Run gs (Ghostscript) to generate .png from .pdf
+                gs_proc = await asyncio.create_subprocess_exec(
+                    "gs",
+                    "-dNOPAUSE",
+                    "-dBATCH",
+                    "-sDEVICE=png16m",
+                    "-r" + str(dpi),
+                    "-dGraphicsAlphaBits=4",
+                    "-dTextAlphaBits=4",
+                    "-sOutputFile=" + str(png_file),
+                    str(pdf_file),
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    cwd=tmpdir,
+                )
+                await asyncio.wait_for(gs_proc.wait(), timeout=30.0)
+
+                if gs_proc.returncode != 0 or not png_file.exists():
                     return None
 
                 # Read and return PNG data
