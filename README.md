@@ -51,8 +51,8 @@ The master instruction applies to **all channels** and defines the bot's base pe
 **Location**: `history/project/GEMINI.md` (managed in separate Git repository)
 
 **Management**:
-- **View**: `!system_prompt show` - Display the current master instruction
-- **Download**: `!system_prompt download` - Download as `GEMINI.md` file for editing
+- **View**: `/gem system-prompt show` - Display the current master instruction
+- **Download**: `/gem system-prompt download` - Download as `GEMINI.md` file for editing
 - **Edit**: Upload a file named `GEMINI.md` to any channel to update (automatically committed)
 
 **Example**:
@@ -80,10 +80,10 @@ Each channel can have its own additional instruction that **extends** the master
 **Location**: `history/{channel_id}/channel_instruction.md` (git-managed per channel)
 
 **Management**:
-- **View**: `!channel_prompt show` - Display the current channel instruction
-- **Download**: `!channel_prompt download` - Download as `channel_instruction.md`
+- **View**: `/gem channel-prompt show` - Display the current channel instruction
+- **Download**: `/gem channel-prompt download` - Download as `channel_instruction.md`
 - **Edit**: Upload a file named `channel_instruction.md` to the channel
-- **Clear**: `!channel_prompt clear` - Remove the channel instruction
+- **Clear**: `/gem channel-prompt clear` - Remove the channel instruction
 
 **Example** (for a Python-focused channel):
 ```
@@ -248,7 +248,7 @@ history/
 1. **Conversation Versioning**: Every message is tracked with full history
 2. **Experimentation**: Branch to try ideas without losing context
 3. **Rollback**: Switch branches to return to earlier conversation states
-4. **Export**: `!history export` includes full Git history
+4. **Export**: `/gem history export` includes full Git history
 5. **Independence**: Each channel's history is isolated
 
 ---
@@ -264,8 +264,8 @@ history/
 **保存場所**: `history/project/GEMINI.md`（別Gitリポジトリで管理）
 
 **管理方法**:
-- **表示**: `!system_prompt show` - 現在のマスター指示書を表示
-- **ダウンロード**: `!system_prompt download` - `GEMINI.md` ファイルとしてダウンロードして編集
+- **表示**: `/gem system-prompt show` - 現在のマスター指示書を表示
+- **ダウンロード**: `/gem system-prompt download` - `GEMINI.md` ファイルとしてダウンロードして編集
 - **編集**: `GEMINI.md` という名前のファイルを任意のチャンネルにアップロードして更新（自動コミット）
 
 **記述例**:
@@ -293,10 +293,10 @@ history/
 **保存場所**: `history/{channel_id}/channel_instruction.md`（チャンネルごとにGit管理）
 
 **管理方法**:
-- **表示**: `!channel_prompt show` - 現在のチャンネル指示書を表示
-- **ダウンロード**: `!channel_prompt download` - `channel_instruction.md` としてダウンロード
+- **表示**: `/gem channel-prompt show` - 現在のチャンネル指示書を表示
+- **ダウンロード**: `/gem channel-prompt download` - `channel_instruction.md` としてダウンロード
 - **編集**: `channel_instruction.md` という名前のファイルをチャンネルにアップロード
-- **削除**: `!channel_prompt clear` - チャンネル指示書を削除
+- **削除**: `/gem channel-prompt clear` - チャンネル指示書を削除
 
 **記述例**（Pythonチャンネル向け）:
 ```
@@ -352,7 +352,7 @@ Geminiに送信される最終的なプロンプトは以下のように構成�
   - 会話の分岐と履歴追跡を可能にする
   
 - **`channel_instruction.md`** - チャンネル固有の指示書
-  - ファイルアップロードまたは `!channel_prompt clear` で更新時にコミット
+  - ファイルアップロードまたは `/gem channel-prompt clear` で更新時にコミット
   - ブランチを通じて以前の指示書に戻すことが可能
   
 - **`files/`** - 画像添付ファイル
@@ -371,7 +371,7 @@ Geminiに送信される最終的なプロンプトは以下のように構成�
 
 - **`history/config.json`** - グローバルボット設定
   - チャンネルのモデルと生成設定を含む
-  - ボットコマンド（`!model`, `!config`）で管理
+  - ボットコマンド（`/gem model`, `/gem config`）で管理
 
 - **`history/tokens/`** - Google OAuth トークン
   - セキュリティ: バージョン管理すべきではない
@@ -385,8 +385,8 @@ Geminiに送信される最終的なプロンプトは以下のように構成�
 ### この設計の理由
 
 **チャンネル固有データ（Git管理）**:
-- `!branch` コマンドで会話を分岐可能
-- `!history` コマンドで完全な履歴追跡を提供
+- `/gem branch` コマンドで会話を分岐可能
+- `/gem history` コマンドで完全な履歴追跡を提供
 - 完全なコンテキスト付きで会話をエクスポート可能
 - 各チャンネルが独立して動作
 
@@ -407,7 +407,7 @@ Geminiに送信される最終的なプロンプトは以下のように構成�
 
 2. **チャンネル指示書の変更**
    - `channel_instruction.md` をアップロードした時
-   - `!channel_prompt clear` を使用した時
+   - `/gem channel-prompt clear` を使用した時
    - コミットメッセージ: `"Update channel instruction"`, `"Initialize empty channel instruction"`
 
 3. **マスター指示書の変更**
@@ -433,11 +433,11 @@ Geminiに送信される最終的なプロンプトは以下のように構成�
 ```
 
 **利用可能なコマンド**:
-- `!branch list` - すべてのブランチを表示
-- `!branch create <名前>` - 会話をフォーク
-- `!branch switch <名前>` - アクティブブランチを変更
-- `!branch merge <名前>` - ブランチを結合
-- `!branch delete <名前>` - ブランチを削除
+- `/gem branch list` - すべてのブランチを表示
+- `/gem branch create <名前>` - 会話をフォーク
+- `/gem branch switch <名前>` - アクティブブランチを変更
+- `/gem branch merge <名前>` - ブランチを結合
+- `/gem branch delete <名前>` - ブランチを削除
 
 ### 保存構造
 
@@ -461,7 +461,7 @@ history/
 1. **会話のバージョン管理**: すべてのメッセージが完全な履歴とともに追跡される
 2. **実験**: コンテキストを失わずにアイデアを試すためにブランチを作成
 3. **ロールバック**: ブランチを切り替えて以前の会話状態に戻る
-4. **エクスポート**: `!history export` で完全なGit履歴を含む
+4. **エクスポート**: `/gem history export` で完全なGit履歴を含む
 5. **独立性**: 各チャンネルの履歴は分離されている
 
 ---
@@ -1108,18 +1108,18 @@ GEMINI_CHANNEL_ID=123456789012345678,987654321098765432
 
 The master system prompt applies to all channels. You can view and manage it:
 
-- **View**: Use `!system_prompt show` to view the current master instruction
-- **Download**: Use `!system_prompt download` to download as a file
+- **View**: Use `/gem system-prompt show` to view the current master instruction
+- **Download**: Use `/gem system-prompt download` to download as a file
 - **Edit**: Upload a file named `GEMINI.md` to any channel to update the master instruction
 
 ### Channel Instruction (Per-channel)
 
 Each channel can have its own additional instruction.
 
-- **View**: Use `!channel_prompt show` to view the current channel instruction
-- **Download**: Use `!channel_prompt download` to download as a file
+- **View**: Use `/gem channel-prompt show` to view the current channel instruction
+- **Download**: Use `/gem channel-prompt download` to download as a file
 - **Edit**: Upload a file named `channel_instruction.md` to the channel
-- **Clear**: Use `!channel_prompt clear` to remove the channel instruction
+- **Clear**: Use `/gem channel-prompt clear` to remove the channel instruction
 
 System prompts are constructed as: `[Master Instruction] + [Channel Instruction]`.
 
@@ -1151,7 +1151,7 @@ Conversation history is persisted per channel using Git in the `history/` direct
 - Each channel has its own Git repository
 - History survives bot restarts
 - Branch/merge support for conversation forking
-- Export to Markdown with `!history export`
+- Export to Markdown with `/gem history export`
 - Full Git history with automatic commits
 
 For more details on Git operations and version control, see [Git Version Control](#git-version-control).
@@ -1163,7 +1163,7 @@ For more details on Git operations and version control, see [Git Version Control
 - 各チャンネルが独自のGitリポジトリを持つ
 - 再起動後も履歴が保持される
 - ブランチ・マージで会話を分岐可能
-- `!history export`でMarkdownにエクスポート
+- `/gem history export`でMarkdownにエクスポート
 - 自動コミットによる完全なGit履歴
 
 Git操作とバージョン管理の詳細については、[Git バージョン管理](#git-バージョン管理) を参照してください。
@@ -1180,7 +1180,7 @@ The bot supports Google Calendar and Google Tasks integration through natural la
 2. Enable the Google Calendar API and Google Tasks API
 3. Create OAuth 2.0 credentials (Desktop application)
 4. Download the credentials file and save it as `credentials.json` in the project root
-5. Use `!google link` to link your Google account
+5. Use `/gem google link` to link your Google account
 
 ### Using Calendar Mode
 
