@@ -2,6 +2,7 @@
 
 Discord上でGemini APIを使用してAIと会話できるボットです。
 
+> **注意:** 最新のリポジトリは [https://git.kinoshita-lab.org/kazbo/gem-bot](https://git.kinoshita-lab.org/kazbo/gem-bot) で公開されています。他はミラーです。
 
 ---
 

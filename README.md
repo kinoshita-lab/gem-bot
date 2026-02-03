@@ -2,6 +2,7 @@
 
 A Discord bot that enables AI conversations using the Gemini API.
 
+> **Note:** The official repository is hosted at [https://git.kinoshita-lab.org/kazbo/gem-bot](https://git.kinoshita-lab.org/kazbo/gem-bot). Other locations are mirrors.
 
 [日本語ドキュメント (Japanese)](README.ja.md)
 
