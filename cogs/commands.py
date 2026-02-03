@@ -182,6 +182,24 @@ class Commands(commands.Cog):
             if current.lower() in key.lower()
         ][:25]
 
+    async def history_delete_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        """Autocomplete for history delete - shows message previews."""
+        channel_id = interaction.channel_id
+        history = self.bot.conversation_history.get(channel_id, [])
+
+        choices = []
+        for i, msg in enumerate(history):
+            index = i + 1
+            if current and not str(index).startswith(current):
+                continue
+            role = msg.role.upper()
+            preview = self._get_message_preview(msg, max_length=40)
+            choices.append(
+                app_commands.Choice(name=f"{index}. [{role}] {preview}", value=str(index))
+            )
+
+        return choices[:25]
+
     # =========================================================================
     # Slash Commands Group: /gem
     # =========================================================================
@@ -405,19 +423,26 @@ class Commands(commands.Cog):
 
     @history_group.command(name="delete")
     @app_commands.describe(index="The message number to delete")
-    async def history_delete(self, interaction: discord.Interaction, index: int):
+    @app_commands.autocomplete(index=history_delete_autocomplete)
+    async def history_delete(self, interaction: discord.Interaction, index: str):
         """Delete a message and its pair from memory (does not delete Discord messages)."""
         channel_id = interaction.channel_id
-        
+
+        try:
+            index_int = int(index)
+        except ValueError:
+            await interaction.response.send_message(self.t("history_delete_invalid_index"))
+            return
+
         try:
             history = self.bot.conversation_history.get(channel_id, [])
             if not history:
                 await interaction.response.send_message(self.t("history_list_empty"))
                 return
 
-            idx = index - 1
+            idx = index_int - 1
             if idx < 0 or idx >= len(history):
-                await interaction.response.send_message(self.t("history_delete_not_found", index=index))
+                await interaction.response.send_message(self.t("history_delete_not_found", index=index_int))
                 return
             
             # Calculate what to delete (logic copied from original)

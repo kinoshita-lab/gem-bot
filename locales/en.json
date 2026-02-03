@@ -71,6 +71,7 @@
   "history_list_footer": "Showing {shown}/{total} messages",
   "history_delete_usage": "Usage: `!history delete <number>`\nUse `!history list` to see message numbers.",
   "history_delete_not_found": "Message #{index} not found.",
+  "history_delete_invalid_index": "Invalid message number. Please enter a number.",
   "history_delete_confirm": "Delete these messages?\n\n{messages}\n\nType `yes` to delete, anything else to cancel",
   "history_delete_success": "Deleted {count} message(s).",
   "history_delete_cancelled": "Deletion cancelled.",

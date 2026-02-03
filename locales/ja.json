@@ -71,6 +71,7 @@
   "history_list_footer": "{shown}/{total} 件を表示",
   "history_delete_usage": "使用方法: `!history delete <番号>`\n`!history list` で番号を確認できます。",
   "history_delete_not_found": "番号 {index} のメッセージが見つかりません。",
+  "history_delete_invalid_index": "無効なメッセージ番号です。数字を入力してください。",
   "history_delete_confirm": "以下のメッセージを削除しますか？\n\n{messages}\n\n`yes` で削除、それ以外でキャンセル",
   "history_delete_success": "{count} 件のメッセージを削除しました。",
   "history_delete_cancelled": "削除をキャンセルしました。",
