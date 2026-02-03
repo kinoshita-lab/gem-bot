@@ -33,7 +33,7 @@ Guidelines for AI coding agents working in this repository.
 
 A Discord bot enabling AI conversations using the Gemini API with Google Calendar/Tasks integration.
 
-**Tech Stack:** Python 3.13+, discord.py, google-genai, google-api-python-client, uv
+**Tech Stack:** Python 3.13+, discord.py (app_commands), google-genai, google-api-python-client, uv
 
 ## Build/Lint/Test Commands
 
@@ -193,17 +193,22 @@ class HistoryManager:
 
 ### Discord Commands
 
-Commands live in `cogs/commands.py`. Use command groups for related functionality:
+Commands live in `cogs/commands.py`. Use slash commands with `app_commands`:
 
 ```python
-@commands.group(name="model")
-async def model(self, ctx: commands.Context):
-    """Model management commands."""
-    if ctx.invoked_subcommand is None:
-        await self._handle_invalid_subcommand(ctx, "model_usage")
+# Root command group
+gem_group = app_commands.Group(name="gem", description="Gemini Bot Commands")
 
-@model.command(name="list")
-async def model_list(self, ctx: commands.Context):
+@gem_group.command(name="info")
+async def info(self, interaction: discord.Interaction):
+    """Displays information about the bot."""
+    ...
+
+# Subgroups
+model_group = app_commands.Group(name="model", parent=gem_group, description="Model management")
+
+@model_group.command(name="list")
+async def model_list(self, interaction: discord.Interaction):
     """Lists all available Gemini models."""
     ...
 ```
@@ -232,6 +237,7 @@ def t(self, key: str, **kwargs) -> str:
 | `DISCORD_BOT_TOKEN` | Yes | Discord Bot token |
 | `GEMINI_API_KEY` | Yes | Gemini API key |
 | `GEMINI_CHANNEL_ID` | Yes | Auto-response channel IDs (comma-separated) |
+| `DISCORD_GUILD_ID` | No | Guild ID for instant slash command sync (Development) |
 
 ## External Dependencies
 

@@ -139,7 +139,7 @@ Located in `history/{channel_id}/`:
   - Enables conversation branching and history tracking
   
 - **`channel_instruction.md`** - Channel-specific instruction
-  - Committed when updated via file upload or `!channel_prompt clear`
+  - Committed when updated via file upload or `/gem channel-prompt clear`
   - Allows reverting to previous instructions through branching
   
 - **`files/`** - Image attachments
@@ -158,7 +158,7 @@ Located in `history/project/`:
 
 - **`history/config.json`** - Global bot configuration
   - Contains channel models and generation settings
-  - Managed by bot commands (`!model`, `!config`)
+  - Managed by bot commands (`/gem model`, `/gem config`)
 
 - **`history/tokens/`** - Google OAuth tokens
   - Security: Should never be version controlled
@@ -172,8 +172,8 @@ Located in `history/project/`:
 ### Why This Design?
 
 **Channel-specific data (Git-managed)**:
-- Enables conversation branching with `!branch` commands
-- Provides complete history tracking with `!history` commands
+- Enables conversation branching with `/gem branch` commands
+- Provides complete history tracking with `/gem history` commands
 - Allows exporting conversations with full context
 - Each channel operates independently
 
@@ -194,7 +194,7 @@ The bot automatically commits changes for:
 
 2. **Channel instruction changes**
    - When uploading `channel_instruction.md`
-   - When using `!channel_prompt clear`
+   - When using `/gem channel-prompt clear`
    - Commit messages: `"Update channel instruction"`, `"Initialize empty channel instruction"`
 
 3. **Master instruction changes**
@@ -220,11 +220,11 @@ Main conversation (main branch)
 ```
 
 **Available commands**:
-- `!branch list` - View all branches
-- `!branch create <name>` - Fork conversation
-- `!branch switch <name>` - Change active branch
-- `!branch merge <name>` - Combine branches
-- `!branch delete <name>` - Remove branch
+- `/gem branch list` - View all branches
+- `/gem branch create <name>` - Fork conversation
+- `/gem branch switch <name>` - Change active branch
+- `/gem branch merge <name>` - Combine branches
+- `/gem branch delete <name>` - Remove branch
 
 ### Storage Structure
 
@@ -590,6 +590,7 @@ Edit `.env` with your credentials:
 GEMINI_API_KEY=your_gemini_api_key_here
 DISCORD_BOT_TOKEN=your_discord_bot_token_here
 GEMINI_CHANNEL_ID=123456789012345678
+DISCORD_GUILD_ID=your_guild_id_here  # Optional: For dev slash command sync
 ```
 
 | Variable | Required | Description |
@@ -597,6 +598,7 @@ GEMINI_CHANNEL_ID=123456789012345678
 | `GEMINI_API_KEY` | Yes | API key from Google AI Studio |
 | `DISCORD_BOT_TOKEN` | Yes | Bot token from Discord Developer Portal |
 | `GEMINI_CHANNEL_ID` | Yes | Channel IDs for bot responses (comma-separated) |
+| `DISCORD_GUILD_ID` | No | Guild ID for instant slash command sync (Development) |
 
 ### 3. Start the Bot
 
@@ -726,12 +728,157 @@ uv sync
 cp .env.example .env
 ```
 
+Edit `.env` with your credentials:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+DISCORD_BOT_TOKEN=your_discord_bot_token_here
+GEMINI_CHANNEL_ID=123456789012345678
+DISCORD_GUILD_ID=your_guild_id_here
+```
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GEMINI_API_KEY` | Yes | API key from Google AI Studio |
+| `DISCORD_BOT_TOKEN` | Yes | Bot token from Discord Developer Portal |
+| `GEMINI_CHANNEL_ID` | Yes | Channel IDs for bot responses (comma-separated) |
+| `DISCORD_GUILD_ID` | No | Guild ID for instant slash command sync (Development) |
+
+### 3. Start the Bot
+
+```bash
+uv run python bot.py
+```
+
+The bot will send a message to the configured channels when it comes online.
+
+---
+
+## 前提条件
+
+### uv（パッケージマネージャー）のインストール
+
+このプロジェクトはパッケージマネージャーとして [uv](https://docs.astral.sh/uv/) を使用しています。
+
+**Windows (PowerShell):**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**macOS / Linux:**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Git のインストール
+
+会話履歴の管理に Git が必要です。
+
+**Windows:**
+[git-scm.com](https://git-scm.com/download/win) からダウンロードしてインストール
+
+**macOS:**
+```bash
+xcode-select --install
+```
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt install git
+```
+
+インストール後、ユーザー情報を設定:
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+```
+
+### LaTeX のインストール（オプション - 数式レンダリング用）
+
+数式を画像としてレンダリングするには LaTeX が必要です。インストールしなくてもボットは動作しますが、数式はテキストのみで表示されます。
+
+**Windows:**
+1. [MiKTeX](https://miktex.org/download) をダウンロードしてインストール
+2. インストール中に「Install missing packages on-the-fly: Yes」を選択
+3. インストール後、MiKTeX Console を開いて `standalone` パッケージをインストール
+
+**macOS:**
+```bash
+# Homebrew を使用
+brew install --cask mactex-no-gui
+
+# または BasicTeX（小さい、約100MB）
+brew install --cask basictex
+# 必要なパッケージをインストール
+sudo tlmgr update --self
+sudo tlmgr install standalone preview dvipng
+```
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt install texlive-latex-extra dvipng
+```
+
+**Linux (Fedora/RHEL):**
+```bash
+sudo dnf install texlive-standalone texlive-preview dvipng
+```
+
+**Linux (Arch):**
+```bash
+sudo pacman -S texlive-latexextra
+```
+
+### Gemini API キーの取得
+
+1. [Google AI Studio API Keys](https://aistudio.google.com/apikey) にアクセス
+2. Google アカウントでログイン
+3. 「Create API Key」をクリック
+4. API キーをコピー
+
+### Discord Bot の作成
+
+1. [Discord Developer Portal](https://discord.com/developers/applications) にアクセス
+2. 「New Application」をクリック
+3. アプリケーション名を入力
+   - **重要:** ボット名に「gemini」を含めないでください。Discordは「gemini」を予約語としてブロックします。
+   - 「gem-bot」「ai-assistant」などの代替名を使用してください。
+4. 左サイドバーの「Bot」に移動
+5. 「Reset Token」をクリックしてボットトークンをコピー
+6. 以下の Privileged Gateway Intents を有効化:
+   - Message Content Intent（メッセージ読み取りに必須）
+7. 「OAuth2」>「URL Generator」に移動
+8. スコープを選択: `bot`, `applications.commands`
+9. ボット権限を選択: `Send Messages`, `Read Message History`, `Attach Files`
+10. 生成された URL をコピーして開き、ボットをサーバーに招待
+
+---
+
+## セットアップ
+
+### 1. クローンとインストール
+
+```bash
+git clone <repository-url>
+cd gem-bot
+uv sync
+```
+
+### 2. 環境変数の設定
+
+`.env.example`を`.env`にコピーして設定:
+
+```bash
+cp .env.example .env
+```
+
 `.env` を編集して認証情報を設定:
 
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
 DISCORD_BOT_TOKEN=your_discord_bot_token_here
 GEMINI_CHANNEL_ID=123456789012345678
+DISCORD_GUILD_ID=your_guild_id_here
 ```
 
 | 変数 | 必須 | 説明 |
@@ -739,6 +886,7 @@ GEMINI_CHANNEL_ID=123456789012345678
 | `GEMINI_API_KEY` | Yes | Google AI Studio の API キー |
 | `DISCORD_BOT_TOKEN` | Yes | Discord Developer Portal の Bot トークン |
 | `GEMINI_CHANNEL_ID` | Yes | ボットが応答するチャンネルID（カンマ区切り） |
+| `DISCORD_GUILD_ID` | No | スラッシュコマンドの即時同期用ギルドID（開発用） |
 
 ### 3. ボットの起動
 
@@ -752,34 +900,35 @@ uv run python bot.py
 
 ## Commands
 
+All commands are slash commands under the `/gem` group.
+
 ### General
 
 | Command | Description |
 |---------|-------------|
-| `!help` | Show help message |
-| `!info` | Show bot information |
-| `!lang [code]` | Change display language |
+| `/gem info` | Show bot information |
+| `/gem lang [code]` | Change display language |
 
 ### Model
 
 | Command | Description |
 |---------|-------------|
-| `!model list` | List available Gemini models |
-| `!model set` | Interactively change the model |
+| `/gem model list` | List available Gemini models |
+| `/gem model set` | Select a model from available options |
 
 ### Image Generation
 
 | Command | Description |
 |---------|-------------|
-| `!image <prompt>` | Generate an image from text |
+| `/gem image <prompt>` | Generate an image from text |
 
 ### Generation Config
 
 | Command | Description |
 |---------|-------------|
-| `!config show` | Show current generation settings |
-| `!config set <key> <value>` | Set a generation parameter |
-| `!config reset [key]` | Reset settings to default |
+| `/gem config show` | Show current generation settings |
+| `/gem config set <key> <value>` | Set a generation parameter |
+| `/gem config reset [key]` | Reset settings to default |
 
 Available parameters:
 - `temperature` (0.0-2.0) - Randomness
@@ -793,67 +942,76 @@ Available parameters:
 
 | Command | Description |
 |---------|-------------|
-| `!history list [start] [count]` | List history with numbered messages |
-| `!history delete <number>` | Delete a specific message by number |
-| `!history clear` | Clear all conversation history |
-| `!history export [filename]` | Export history as Markdown (ZIP with images) |
+| `/gem history list [start] [count]` | List history with numbered messages |
+| `/gem history delete <number>` | Delete a specific message by number |
+| `/gem history clear` | Clear all conversation history |
+| `/gem history export [filename]` | Export history as Markdown (ZIP with images) |
 
 ### Branch Management
 
 | Command | Description |
 |---------|-------------|
-| `!branch list` | List all branches |
-| `!branch create <name>` | Create and switch to new branch |
-| `!branch switch <name>` | Switch to a branch |
-| `!branch merge <name>` | Merge a branch into current |
-| `!branch delete <name>` | Delete a branch |
+| `/gem branch list` | List all branches |
+| `/gem branch create <name>` | Create and switch to new branch |
+| `/gem branch switch <name>` | Switch to a branch |
+| `/gem branch merge <name>` | Merge a branch into current |
+| `/gem branch delete <name>` | Delete a branch |
 
 ### Tool Mode
 
 | Command | Description |
 |---------|-------------|
-| `!mode default` | Switch to default mode (Google Search) |
-| `!mode calendar` | Switch to calendar mode (Google Calendar) |
-| `!mode todo` | Switch to todo mode (Google Tasks) |
+| `/gem mode set [mode]` | Switch tool mode (default/calendar/todo) |
 
 ### Google Integration
 
 | Command | Description |
 |---------|-------------|
-| `!google link` | Link your Google account |
-| `!google unlink` | Unlink your Google account |
-| `!google status` | Check Google connection status |
+| `/gem google link` | Link your Google account |
+| `/gem google unlink` | Unlink your Google account |
+| `/gem google status` | Check Google connection status |
+
+### Prompt Management
+
+| Command | Description |
+|---------|-------------|
+| `/gem system-prompt show` | Show master system prompt |
+| `/gem system-prompt download` | Download master system prompt |
+| `/gem channel-prompt show` | Show channel instruction |
+| `/gem channel-prompt download` | Download channel instruction |
+| `/gem channel-prompt clear` | Clear channel instruction |
 
 ## コマンド
+
+すべてのコマンドは `/gem` グループ配下のスラッシュコマンドです。
 
 ### 一般
 
 | コマンド | 説明 |
 |---------|------|
-| `!help` | ヘルプを表示 |
-| `!info` | ボット情報を表示 |
-| `!lang [code]` | 表示言語を変更 |
+| `/gem info` | ボット情報を表示 |
+| `/gem lang [code]` | 表示言語を変更 |
 
 ### モデル
 
 | コマンド | 説明 |
 |---------|------|
-| `!model list` | 利用可能なモデル一覧 |
-| `!model set` | モデルを対話的に変更 |
+| `/gem model list` | 利用可能なモデル一覧 |
+| `/gem model set` | モデルを選択肢から変更 |
 
 ### 画像生成
 
 | コマンド | 説明 |
 |---------|------|
-| `!image <プロンプト>` | テキストから画像を生成 |
+| `/gem image <プロンプト>` | テキストから画像を生成 |
 
 ### 生成設定
 
 | コマンド | 説明 |
 |---------|------|
-| `!config show` | 現在の生成設定を表示 |
-| `!config set <キー> <値>` | 生成パラメータを設定 |
-| `!config reset [キー]` | 設定をリセット |
+| `/gem config show` | 現在の生成設定を表示 |
+| `/gem config set <キー> <値>` | 生成パラメータを設定 |
+| `/gem config reset [キー]` | 設定をリセット |
 
 設定可能なパラメータ:
 - `temperature` (0.0-2.0) - ランダム性
@@ -867,36 +1025,44 @@ Available parameters:
 
 | コマンド | 説明 |
 |---------|------|
-| `!history list [開始] [件数]` | 履歴を番号付きで一覧表示 |
-| `!history delete <番号>` | 指定した番号のメッセージを削除 |
-| `!history clear` | 会話履歴を全て削除 |
-| `!history export [ファイル名]` | 履歴をMarkdownでエクスポート（画像はZIP） |
+| `/gem history list [開始] [件数]` | 履歴を番号付きで一覧表示 |
+| `/gem history delete <番号>` | 指定した番号のメッセージを削除 |
+| `/gem history clear` | 会話履歴を全て削除 |
+| `/gem history export [ファイル名]` | 履歴をMarkdownでエクスポート（画像はZIP） |
 
 ### ブランチ管理
 
 | コマンド | 説明 |
 |---------|------|
-| `!branch list` | ブランチ一覧を表示 |
-| `!branch create <名前>` | 新しいブランチを作成して切り替え |
-| `!branch switch <名前>` | 指定したブランチに切り替え |
-| `!branch merge <名前>` | ブランチをマージ |
-| `!branch delete <名前>` | ブランチを削除 |
+| `/gem branch list` | ブランチ一覧を表示 |
+| `/gem branch create <名前>` | 新しいブランチを作成して切り替え |
+| `/gem branch switch <名前>` | 指定したブランチに切り替え |
+| `/gem branch merge <名前>` | ブランチをマージ |
+| `/gem branch delete <名前>` | ブランチを削除 |
 
 ### ツールモード
 
 | コマンド | 説明 |
 |---------|------|
-| `!mode default` | デフォルトモード（Google検索） |
-| `!mode calendar` | カレンダーモード（Googleカレンダー） |
-| `!mode todo` | TODOモード（Google Tasks） |
+| `/gem mode set [モード]` | ツールモードを変更（default/calendar/todo） |
 
 ### Google連携
 
 | コマンド | 説明 |
 |---------|------|
-| `!google link` | Googleアカウントを連携 |
-| `!google unlink` | Googleアカウントの連携を解除 |
-| `!google status` | Google連携状態を確認 |
+| `/gem google link` | Googleアカウントを連携 |
+| `/gem google unlink` | Googleアカウントの連携を解除 |
+| `/gem google status` | Google連携状態を確認 |
+
+### プロンプト管理
+
+| コマンド | 説明 |
+|---------|------|
+| `/gem system-prompt show` | マスター指示書を表示 |
+| `/gem system-prompt download` | マスター指示書をダウンロード |
+| `/gem channel-prompt show` | チャンネル指示書を表示 |
+| `/gem channel-prompt download` | チャンネル指示書をダウンロード |
+| `/gem channel-prompt clear` | チャンネル指示書を削除 |
 
 ---
 
@@ -961,18 +1127,18 @@ System prompts are constructed as: `[Master Instruction] + [Channel Instruction]
 
 マスター指示書は全チャンネルに適用されます。以下の方法で管理できます:
 
-- **表示**: `!system_prompt show` で現在のマスター指示書を表示
-- **ダウンロード**: `!system_prompt download` でファイルとしてダウンロード
+- **表示**: `/gem system-prompt show` で現在のマスター指示書を表示
+- **ダウンロード**: `/gem system-prompt download` でファイルとしてダウンロード
 - **編集**: `GEMINI.md` という名前のファイルを任意のチャンネルにアップロードして更新
 
 ### チャンネル個別指示
 
 各チャンネルは独自の追加指示を持つことができます。
 
-- **表示**: `!channel_prompt show` で現在のチャンネル指示書を表示
-- **ダウンロード**: `!channel_prompt download` でファイルとしてダウンロード
+- **表示**: `/gem channel-prompt show` で現在のチャンネル指示書を表示
+- **ダウンロード**: `/gem channel-prompt download` でファイルとしてダウンロード
 - **編集**: `channel_instruction.md` という名前のファイルをチャンネルにアップロード
-- **削除**: `!channel_prompt clear` でチャンネル指示書を削除
+- **削除**: `/gem channel-prompt clear` でチャンネル指示書を削除
 
 システムプロンプトは `[マスター指示書] + [チャンネル指示書]` の形で結合されます。
 
@@ -1019,7 +1185,7 @@ The bot supports Google Calendar and Google Tasks integration through natural la
 ### Using Calendar Mode
 
 ```
-!mode calendar
+/gem mode set calendar
 ```
 
 In calendar mode, you can ask the bot to:
@@ -1033,7 +1199,7 @@ Example: "What do I have scheduled for tomorrow?"
 ### Using Todo Mode
 
 ```
-!mode todo
+/gem mode set todo
 ```
 
 In todo mode, you can ask the bot to:
@@ -1055,12 +1221,12 @@ Example: "Add 'Buy groceries' to my shopping list"
 2. Google Calendar API と Google Tasks API を有効化
 3. OAuth 2.0認証情報を作成（デスクトップアプリケーション）
 4. 認証情報ファイルをダウンロードし、プロジェクトルートに `credentials.json` として保存
-5. `!google link` でGoogleアカウントを連携
+5. `/gem google link` でGoogleアカウントを連携
 
 ### カレンダーモードの使用
 
 ```
-!mode calendar
+/gem mode set calendar
 ```
 
 カレンダーモードでは以下が可能:
@@ -1074,7 +1240,7 @@ Example: "Add 'Buy groceries' to my shopping list"
 ### TODOモードの使用
 
 ```
-!mode todo
+/gem mode set todo
 ```
 
 TODOモードでは以下が可能:
@@ -1095,8 +1261,8 @@ The bot supports multiple languages. Default languages are Japanese (`ja`) and E
 ### Change Language
 
 ```
-!lang ja    # Japanese
-!lang en    # English
+/gem lang en    # English
+/gem lang ja    # Japanese
 ```
 
 ### Add New Language
@@ -1113,8 +1279,8 @@ Language settings are stored in `history/config.json`.
 ### 言語変更
 
 ```
-!lang ja    # 日本語
-!lang en    # English
+/gem lang ja    # 日本語
+/gem lang en    # English
 ```
 
 ### 新しい言語の追加

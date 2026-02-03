@@ -18,148 +18,12 @@ from tasks_tools import get_tasks_tools, TasksToolHandler
 from latex_renderer import LatexRenderer
 
 
-class LocalizedHelpCommand(commands.DefaultHelpCommand):
-    """Custom help command with i18n support and grouped display."""
-
-    # Command groups for organized help display
-    COMMAND_GROUPS = {
-        "general": ["help", "info", "lang"],
-        "conversation": ["model", "system_prompt", "channel_prompt", "config"],
-        "history": ["history", "branch"],
-        "tools": ["image", "mode"],
-        "integrations": ["calendar"],
-    }
-
-    def t(self, key: str, **kwargs) -> str:
-        """Shortcut for translation."""
-        return self.context.bot.i18n.t(key, **kwargs)
-
-    def get_ending_note(self):
-        """Return the ending note for the help command."""
-        return self.t(
-            "help_ending_note",
-            prefix=self.context.clean_prefix,
-            command=self.invoked_with,
-        )
-
-    def get_command_signature(self, command):
-        """Return the command signature."""
-        return (
-            f"{self.context.clean_prefix}{command.qualified_name} {command.signature}"
-        )
-
-    async def send_bot_help(self, mapping):
-        """Send help for all commands with organized groups."""
-        description = self.t("help_bot_description")
-        
-        # Add system prompt info if available
-        prompt_desc = self.t("help_prompt_system_description")
-        if prompt_desc != "help_prompt_system_description":
-            description += "\n\n" + prompt_desc
-
-        embed = discord.Embed(
-            title=self.t("help_title"),
-            description=description,
-            color=discord.Color.blue(),
-        )
-
-        # Collect all commands
-        all_commands = {}
-        for cog, cmds in mapping.items():
-            filtered = await self.filter_commands(cmds, sort=True)
-            for cmd in filtered:
-                all_commands[cmd.name] = cmd
-
-        # Display commands by group
-        for group_key, cmd_names in self.COMMAND_GROUPS.items():
-            group_commands = []
-            for cmd_name in cmd_names:
-                if cmd_name in all_commands:
-                    cmd = all_commands[cmd_name]
-                    desc = self._get_localized_command_help(cmd)
-                    prefix = self.context.clean_prefix
-                    # Show subcommands for group commands
-                    if isinstance(cmd, commands.Group):
-                        subcmds = " | ".join([f"{sub.name}" for sub in cmd.commands])
-                        group_commands.append(
-                            f"`{prefix}{cmd.name}` - {desc}\n  └ {subcmds}"
-                        )
-                    else:
-                        group_commands.append(f"`{prefix}{cmd.name}` - {desc}")
-
-            if group_commands:
-                group_title = self.t(f"help_group_{group_key}")
-                embed.add_field(
-                    name=f"**{group_title}**",
-                    value="\n".join(group_commands),
-                    inline=False,
-                )
-
-        embed.set_footer(text=self.get_ending_note())
-        await self.get_destination().send(embed=embed)
-
-    def _get_localized_command_help(self, command) -> str:
-        """Get localized help text for a command."""
-        key = f"help_command_{command.name}"
-        translated = self.t(key)
-        # If no translation found (returns key), use original help
-        if translated == key:
-            return command.short_doc or command.help or ""
-        return translated
-
-    async def send_command_help(self, command):
-        """Send help for a specific command."""
-        embed = discord.Embed(
-            title=f"{self.context.clean_prefix}{command.qualified_name}",
-            description=self._get_localized_command_help(command),
-            color=discord.Color.blue(),
-        )
-
-        if command.aliases:
-            embed.add_field(
-                name=self.t("help_aliases"),
-                value=", ".join(command.aliases),
-                inline=False,
-            )
-
-        usage = self.get_command_signature(command)
-        embed.add_field(
-            name=self.t("help_usage"),
-            value=f"`{usage}`",
-            inline=False,
-        )
-
-        await self.get_destination().send(embed=embed)
-
-    async def send_group_help(self, group):
-        """Send help for a command group."""
-        embed = discord.Embed(
-            title=f"{self.context.clean_prefix}{group.qualified_name}",
-            description=self._get_localized_command_help(group),
-            color=discord.Color.blue(),
-        )
-
-        filtered = await self.filter_commands(group.commands, sort=True)
-        if filtered:
-            subcommands = []
-            for cmd in filtered:
-                desc = self._get_localized_command_help(cmd)
-                subcommands.append(f"`{cmd.name}` - {desc}")
-
-            embed.add_field(
-                name=self.t("help_subcommands"),
-                value="\n".join(subcommands),
-                inline=False,
-            )
-
-        await self.get_destination().send(embed=embed)
-
-
 # Load environment variables
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_CHANNEL_ID = os.getenv("GEMINI_CHANNEL_ID")
+DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID") # Optional: For dev slash command sync
 
 # Check for required environment variables
 if not DISCORD_TOKEN:
@@ -277,6 +141,24 @@ class GeminiBot(commands.Bot):
 
         # Load existing conversation histories from disk
         self._load_histories_from_disk()
+
+        # Sync slash commands
+        if DISCORD_GUILD_ID:
+            try:
+                guild = discord.Object(id=int(DISCORD_GUILD_ID))
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)
+                print(f"Slash commands synced to guild: {DISCORD_GUILD_ID}")
+            except Exception as e:
+                print(f"Failed to sync commands to guild {DISCORD_GUILD_ID}: {e}")
+                # Fallback to global sync if guild sync fails
+                print("Falling back to global sync...")
+                await self.tree.sync()
+                print("Slash commands synced globally.")
+        else:
+            print("Syncing slash commands globally...")
+            await self.tree.sync()
+            print("Slash commands synced globally.")
 
     def _load_histories_from_disk(self):
         """Load all conversation histories from disk on startup."""
@@ -1081,8 +963,6 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = GeminiBot(command_prefix="!", intents=intents, help_command=None)
 
-# Set custom help command
-bot.help_command = LocalizedHelpCommand()
 
 
 @bot.event
