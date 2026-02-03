@@ -248,7 +248,7 @@ history/
 1. **Conversation Versioning**: Every message is tracked with full history
 2. **Experimentation**: Branch to try ideas without losing context
 3. **Rollback**: Switch branches to return to earlier conversation states
-4. **Export**: `/gem history export` includes full Git history
+4. **Export**: `/gem history export` to Markdown format
 5. **Independence**: Each channel's history is isolated
 
 ---
@@ -461,7 +461,7 @@ history/
 1. **会話のバージョン管理**: すべてのメッセージが完全な履歴とともに追跡される
 2. **実験**: コンテキストを失わずにアイデアを試すためにブランチを作成
 3. **ロールバック**: ブランチを切り替えて以前の会話状態に戻る
-4. **エクスポート**: `/gem history export` で完全なGit履歴を含む
+4. **エクスポート**: `/gem history export` でMarkdown形式でエクスポート
 5. **独立性**: 各チャンネルの履歴は分離されている
 
 ---
