@@ -1,3 +1,4 @@
+import base64
 import io
 import zipfile
 from datetime import datetime
@@ -219,6 +220,7 @@ class Commands(commands.Cog):
     channel_prompt_group = app_commands.Group(name="channel-prompt", parent=gem_group, description="Channel prompt management")
     
     google_group = app_commands.Group(name="google", parent=gem_group, description="Google integration")
+    thought_signature_group = app_commands.Group(name="thought-signature", parent=gem_group, description="Thought signature management")
 
 
     # --- Basic Commands ---
@@ -538,7 +540,13 @@ class Commands(commands.Cog):
                 with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
                     md_content = build_md(data, channel_id, branch)
                     zf.writestr("conversation.md", md_content.encode("utf-8"))
-                    
+
+                    # Export thought signature if exists
+                    thought_signature = self.bot.history_manager.load_thought_signature(channel_id)
+                    if thought_signature:
+                        signature_b64 = base64.b64encode(thought_signature).decode("utf-8")
+                        zf.writestr("thought_signature.txt", signature_b64.encode("utf-8"))
+
                     for msg in data.get("messages", []):
                         if "images" in msg:
                             for image_path in msg["images"]:
@@ -547,15 +555,28 @@ class Commands(commands.Cog):
                                 )
                                 if image_data:
                                     zf.writestr(image_path, image_data[0])
-                
+
                 zip_buffer.seek(0)
                 file = discord.File(zip_buffer, filename=f"{filename}.zip")
             else:
-                md_content = build_md(data, channel_id, branch)
-                file = discord.File(
-                    io.BytesIO(md_content.encode("utf-8")),
-                    filename=f"{filename}.md",
-                )
+                # Export thought signature if exists (even without images)
+                thought_signature = self.bot.history_manager.load_thought_signature(channel_id)
+                if thought_signature:
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                        md_content = build_md(data, channel_id, branch)
+                        zf.writestr("conversation.md", md_content.encode("utf-8"))
+                        signature_b64 = base64.b64encode(thought_signature).decode("utf-8")
+                        zf.writestr("thought_signature.txt", signature_b64.encode("utf-8"))
+
+                    zip_buffer.seek(0)
+                    file = discord.File(zip_buffer, filename=f"{filename}.zip")
+                else:
+                    md_content = build_md(data, channel_id, branch)
+                    file = discord.File(
+                        io.BytesIO(md_content.encode("utf-8")),
+                        filename=f"{filename}.md",
+                    )
 
             await interaction.followup.send(self.t("history_export_success"), file=file)
         except Exception as e:
@@ -967,6 +988,50 @@ class Commands(commands.Cog):
             )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+    # --- Thought Signature Group ---
+
+    @thought_signature_group.command(name="download")
+    async def thought_signature_download(self, interaction: discord.Interaction):
+        """Download thought signature as a file."""
+        await interaction.response.defer()
+        channel_id = interaction.channel_id
+
+        thought_signature = self.bot.history_manager.load_thought_signature(channel_id)
+        if not thought_signature:
+            await interaction.followup.send(self.t("thought_signature_not_found"))
+            return
+
+        signature_b64 = base64.b64encode(thought_signature).decode("utf-8")
+        file = discord.File(
+            io.BytesIO(signature_b64.encode("utf-8")),
+            filename="thought_signature.txt"
+        )
+        await interaction.followup.send(self.t("thought_signature_download_success"), file=file)
+
+    @thought_signature_group.command(name="upload")
+    @app_commands.describe(file="thought_signature.txt file")
+    async def thought_signature_upload(self, interaction: discord.Interaction, file: discord.Attachment):
+        """Upload and set thought signature from a file."""
+        await interaction.response.defer()
+        channel_id = interaction.channel_id
+
+        try:
+            content = await file.read()
+            signature_b64 = content.decode("utf-8").strip()
+            signature = base64.b64decode(signature_b64)
+            self.bot.history_manager.save_thought_signature(channel_id, signature)
+            await interaction.followup.send(self.t("thought_signature_upload_success"))
+        except Exception as e:
+            await interaction.followup.send(self.t("thought_signature_upload_error", error=e))
+
+    @thought_signature_group.command(name="clear")
+    async def thought_signature_clear(self, interaction: discord.Interaction):
+        """Clear thought signature for this channel."""
+        channel_id = interaction.channel_id
+        self.bot.history_manager.clear_thought_signature(channel_id)
+        await interaction.response.send_message(self.t("thought_signature_cleared"))
 
 
 async def setup(bot: commands.Bot):

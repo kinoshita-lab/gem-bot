@@ -9,6 +9,7 @@ Each channel has its own independent Git repository.
 
 from __future__ import annotations
 
+import base64
 import json
 import subprocess
 from datetime import datetime, timezone
@@ -820,6 +821,64 @@ class HistoryManager:
         """
         return self.base_dir / "config.json"
 
+    def _get_thought_signature_disabled_path(self) -> Path:
+        """Get the path to the thought signature disabled models file.
+
+        Returns:
+            Path to history/thought_signature_disabled_models.json.
+        """
+        return self.base_dir / "thought_signature_disabled_models.json"
+
+    def load_disabled_models(self) -> list[str]:
+        """Load list of models where thought signature is disabled.
+
+        Returns:
+            List of model names.
+        """
+        path = self._get_thought_signature_disabled_path()
+        if not path.exists():
+            return []
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("disabled_models", [])
+
+    def save_disabled_model(self, model: str) -> None:
+        """Add a model to the disabled list.
+
+        Args:
+            model: Model name to disable.
+        """
+        path = self._get_thought_signature_disabled_path()
+
+        # Load existing data
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {"disabled_models": []}
+
+        # Add model if not already present
+        if model not in data["disabled_models"]:
+            data["disabled_models"].append(model)
+
+        # Save with timestamp
+        data["last_updated"] = datetime.now(timezone.utc).isoformat()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def is_model_disabled(self, model: str) -> bool:
+        """Check if thought signature is disabled for a model.
+
+        Args:
+            model: Model name to check.
+
+        Returns:
+            True if disabled, False otherwise.
+        """
+        disabled_models = self.load_disabled_models()
+        return model in disabled_models
+
     def _load_global_config(self) -> dict[str, Any]:
         """Load global configuration from file.
 
@@ -982,3 +1041,56 @@ class HistoryManager:
                 del config["channels"][channel_key]["generation_config"]
 
         self._save_global_config(config)
+
+    def load_thought_signature(self, channel_id: int) -> bytes | None:
+        """Load thought signature for a channel.
+
+        Args:
+            channel_id: Discord channel ID.
+
+        Returns:
+            Thought signature as bytes, or None if not found.
+        """
+        config = self._load_global_config()
+        channels = config.get("channels", {})
+        channel_config = channels.get(str(channel_id), {})
+        signature_b64 = channel_config.get("thought_signature")
+        if signature_b64:
+            try:
+                return base64.b64decode(signature_b64)
+            except Exception:
+                return None
+        return None
+
+    def save_thought_signature(self, channel_id: int, signature: bytes) -> None:
+        """Save thought signature for a channel.
+
+        Args:
+            channel_id: Discord channel ID.
+            signature: Thought signature as bytes.
+        """
+        config = self._load_global_config()
+
+        if "channels" not in config:
+            config["channels"] = {}
+
+        channel_key = str(channel_id)
+        if channel_key not in config["channels"]:
+            config["channels"][channel_key] = {}
+
+        config["channels"][channel_key]["thought_signature"] = base64.b64encode(signature).decode("utf-8")
+        self._save_global_config(config)
+
+    def clear_thought_signature(self, channel_id: int) -> None:
+        """Clear thought signature for a channel.
+
+        Args:
+            channel_id: Discord channel ID.
+        """
+        config = self._load_global_config()
+        channels = config.get("channels", {})
+        channel_key = str(channel_id)
+
+        if channel_key in channels and "thought_signature" in channels[channel_key]:
+            del channels[channel_key]["thought_signature"]
+            self._save_global_config(config)

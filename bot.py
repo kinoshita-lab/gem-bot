@@ -60,6 +60,10 @@ if not enabled_channel_ids:
 class GeminiBot(commands.Bot):
     """Custom Bot class with Gemini integration."""
 
+    class ThoughtSignatureDisabledError(Exception):
+        """Exception raised when thought signature is disabled for a model."""
+        pass
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -237,6 +241,9 @@ class GeminiBot(commands.Bot):
             self.conversation_history[channel_id] = history
         else:
             self.conversation_history[channel_id] = []
+
+        # Clear thought signature on history reload since history changed
+        self.history_manager.clear_thought_signature(channel_id)
 
     def get_model(self, channel_id: int) -> str:
         """Get the model for a specific channel.
@@ -472,6 +479,7 @@ class GeminiBot(commands.Bot):
                             # Render and send formula as image
                             image_data = await self.latex_renderer.render_formula(
                                 formula_segment["content"],
+                                language=self.i18n.language,
                             )
                             if image_data:
                                 try:
@@ -497,6 +505,8 @@ class GeminiBot(commands.Bot):
                 image_data = await self.table_renderer.render_table(
                     table_data["headers"],
                     table_data["rows"],
+                    table_data["alignments"],
+                    language=self.i18n.language,
                 )
 
                 if image_data:
@@ -516,6 +526,27 @@ class GeminiBot(commands.Bot):
         # Send any remaining text
         if text_buffer.strip():
             await self._send_text(channel, text_buffer)
+
+    def _extract_thought_signature(self, response) -> bytes | None:
+        """Extract thought_signature from Gemini response.
+
+        Args:
+            response: Gemini API response.
+
+        Returns:
+            Thought signature as bytes, or None if not found.
+        """
+        if not response.candidates:
+            return None
+
+        candidate = response.candidates[0]
+        if not candidate.content or not candidate.content.parts:
+            return None
+
+        for part in candidate.content.parts:
+            if hasattr(part, "thought_signature") and part.thought_signature:
+                return part.thought_signature
+        return None
 
     # =========================================================================
     # ask_gemini Helper Methods
@@ -725,6 +756,18 @@ class GeminiBot(commands.Bot):
         if channel_id not in self.conversation_history:
             self.conversation_history[channel_id] = []
 
+        # Load and add thought signature to history if exists and model not disabled
+        model = self.get_model(channel_id)
+        if not self.history_manager.is_model_disabled(model):
+            thought_signature = self.history_manager.load_thought_signature(channel_id)
+            if thought_signature:
+                self.conversation_history[channel_id].append(
+                    types.Content(
+                        role="user",
+                        parts=[types.Part(thought_signature=thought_signature)]
+                    )
+                )
+
         # Build and add user message to history
         user_content = self._build_user_content(prompt, images)
         self.conversation_history[channel_id].append(user_content)
@@ -737,14 +780,52 @@ class GeminiBot(commands.Bot):
                 "tools": self._get_tools_for_mode(channel_id),
             }
 
+            # Only enable thinking config for models not disabled
+            if not self.history_manager.is_model_disabled(model):
+                config_params["thinking_config"] = types.ThinkingConfig(include_thoughts=True)
+
             config_params.update(self.history_manager.load_generation_config(channel_id))
 
-            # Call Gemini API
-            response = await self.gemini_client.aio.models.generate_content(
-                model=model,
-                config=types.GenerateContentConfig(**config_params),
-                contents=self.conversation_history[channel_id],
-            )
+            # Call Gemini API with retry logic for thought signature errors
+            try:
+                response = await self.gemini_client.aio.models.generate_content(
+                    model=model,
+                    config=types.GenerateContentConfig(**config_params),
+                    contents=self.conversation_history[channel_id],
+                )
+            except Exception as e:
+                error_str = str(e)
+                is_thought_signature_error = (
+                    "400 INVALID_ARGUMENT" in error_str and
+                    "parts[0].data" in error_str and
+                    "required oneof" in error_str
+                )
+
+                if is_thought_signature_error and not self.history_manager.is_model_disabled(model):
+                    # thoughtSignature caused an error - disable it
+                    self.history_manager.save_disabled_model(model)
+
+                    # Remove the thought signature entry from history
+                    if self.conversation_history[channel_id]:
+                        last_entry = self.conversation_history[channel_id][-1]
+                        if (last_entry.role == "user" and
+                            last_entry.parts and
+                            len(last_entry.parts) == 1 and
+                            hasattr(last_entry.parts[0], "thought_signature") and
+                            last_entry.parts[0].thought_signature is not None):
+                            self.conversation_history[channel_id].pop()
+
+                    # Raise special exception to be handled by caller
+                    raise self.ThoughtSignatureDisabledError(
+                        self.i18n.t("thought_signature_disabled_for_model", model=model)
+                    )
+                else:
+                    raise
+
+            # Extract and save new thought signature
+            new_signature = self._extract_thought_signature(response)
+            if new_signature:
+                self.history_manager.save_thought_signature(channel_id, new_signature)
 
             # Process response (handle function calls if in calendar or todo mode)
             tool_mode = self.get_tool_mode(channel_id)
@@ -1336,6 +1417,9 @@ async def _handle_auto_response(message) -> None:
             display_text = mode_indicator + response_text
 
             await bot.send_response(message.channel, display_text)
+        except bot.ThoughtSignatureDisabledError as e:
+            # thoughtSignature was disabled for this model
+            await message.channel.send(str(e))
         except Exception as e:
             await message.channel.send(f"An error occurred: {e}")
 

@@ -252,5 +252,11 @@
   "history_config_invalid_key": "無効なキー: {key}。有効なキー: {valid_keys}",
   "history_config_invalid_type": "{key} は {type_name} 型である必要があります",
   "history_config_min_value": "{key} は {min} 以上である必要があります",
-  "history_config_max_value": "{key} は {max} 以下である必要があります"
+  "history_config_max_value": "{key} は {max} 以下である必要があります",
+  "thought_signature_not_found": "このチャンネルの思考署名は見つかりません。",
+  "thought_signature_download_success": "思考署名をダウンロードしました。",
+  "thought_signature_upload_success": "思考署名をアップロードして設定しました。",
+  "thought_signature_upload_error": "思考署名のアップロードに失敗しました: {error}",
+  "thought_signature_cleared": "思考署名をクリアしました。",
+  "thought_signature_disabled_for_model": "モデル `{model}` で思考署名を無効化しました。署名なしで再試行中..."
 }

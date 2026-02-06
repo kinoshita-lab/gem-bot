@@ -13,6 +13,9 @@ wheels/
 # Conversation history (separate Git repository)
 history/
 
+# Thought signature disabled models
+history/thought_signature_disabled_models.json
+
 # Google OAuth credentials (NEVER commit these)
 credentials.json
 client_secret*.json

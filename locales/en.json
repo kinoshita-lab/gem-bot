@@ -252,5 +252,11 @@
   "history_config_invalid_key": "Invalid key: {key}. Valid keys: {valid_keys}",
   "history_config_invalid_type": "{key} must be of type {type_name}",
   "history_config_min_value": "{key} must be at least {min}",
-  "history_config_max_value": "{key} must be at most {max}"
+  "history_config_max_value": "{key} must be at most {max}",
+  "thought_signature_not_found": "No thought signature found for this channel.",
+  "thought_signature_download_success": "Thought signature downloaded.",
+  "thought_signature_upload_success": "Thought signature uploaded and set.",
+  "thought_signature_upload_error": "Failed to upload thought signature: {error}",
+  "thought_signature_cleared": "Thought signature cleared.",
+  "thought_signature_disabled_for_model": "Thought signature disabled for model `{model}`. Retrying without signature..."
 }
