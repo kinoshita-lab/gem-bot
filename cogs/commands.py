@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 import zipfile
@@ -62,11 +63,55 @@ class Commands(commands.Cog):
 
         return recommended, other_models
 
+    async def _is_model_usable(self, model_name: str) -> bool:
+        """Check if a model is usable by making a simple API call.
+
+        Args:
+            model_name: Name of the model to test.
+
+        Returns:
+            True if model is usable, False otherwise.
+        """
+        try:
+            response = await self.bot.gemini_client.aio.models.generate_content(
+                model=model_name,
+                config=types.GenerateContentConfig(
+                    system_instruction="",
+                ),
+                contents="Hi",
+            )
+            return response is not None
+        except Exception as e:
+            error_str = str(e)
+            if "404" in error_str or "429" in error_str or "400" in error_str:
+                return False
+            return False
+
     async def _fetch_models_to_cache(self) -> None:
         """Fetch models from API and cache them on the bot instance."""
         recommended, all_models = await self._fetch_and_sort_models()
-        self.bot.recommended_models = recommended
-        self.bot.available_models = all_models
+
+        # Filter to only usable models
+        usable_models = []
+        semaphore = asyncio.Semaphore(5)
+
+        async def check_model(model_name: str) -> tuple[str, bool]:
+            async with semaphore:
+                usable = await self._is_model_usable(model_name)
+                return model_name, usable
+
+        tasks = [check_model(m) for m in all_models]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for result in results:
+            if isinstance(result, Exception):
+                continue
+            model_name, usable = result
+            if usable:
+                usable_models.append(model_name)
+
+        self.bot.recommended_models = [m for m in recommended if m in usable_models]
+        self.bot.available_models = usable_models
 
     def _get_message_preview(self, msg, max_length: int = 50) -> str:
         """Extract and truncate message content for preview.

@@ -157,7 +157,7 @@ class GeminiBot(commands.Bot):
             cog = self.get_cog("Commands")
             if cog:
                 await cog._fetch_models_to_cache()
-                print(f"Loaded {len(self.available_models)} Gemini models ({len(self.recommended_models)} recommended)")
+                print(f"Loaded {len(self.available_models)} usable Gemini models ({len(self.recommended_models)} recommended)")
         except Exception as e:
             print(f"Warning: Failed to cache models: {e}")
 
