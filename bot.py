@@ -76,6 +76,10 @@ class GeminiBot(commands.Bot):
         # Default model (used when a channel doesn't have a specific model set)
         self.default_model: str = "gemini-flash-latest"
 
+        # Available and recommended models (cached at startup)
+        self.available_models: list[str] = []
+        self.recommended_models: list[str] = []
+
         # Pending model selections: user_id -> {channel_id, models}
         self.pending_model_selections: dict[int, dict] = {}
 
@@ -146,6 +150,16 @@ class GeminiBot(commands.Bot):
     async def setup_hook(self):
         """Load cogs when the bot starts."""
         await self.load_extension("cogs.commands")
+
+        # Fetch and cache available models from Gemini API
+        try:
+            from cogs.commands import Commands
+            cog = self.get_cog("Commands")
+            if cog:
+                await cog._fetch_models_to_cache()
+                print(f"Loaded {len(self.available_models)} Gemini models ({len(self.recommended_models)} recommended)")
+        except Exception as e:
+            print(f"Warning: Failed to cache models: {e}")
 
         # Load existing conversation histories from disk
         self._load_histories_from_disk()
@@ -815,10 +829,17 @@ class GeminiBot(commands.Bot):
                             last_entry.parts[0].thought_signature is not None):
                             self.conversation_history[channel_id].pop()
 
-                    # Raise special exception to be handled by caller
-                    raise self.ThoughtSignatureDisabledError(
-                        self.i18n.t("thought_signature_disabled_for_model", model=model)
-                    )
+                    # Retry without thinking config
+                    config_params["thinking_config"] = types.ThinkingConfig(include_thoughts=False)
+                    try:
+                        response = await self.gemini_client.aio.models.generate_content(
+                            model=model,
+                            config=types.GenerateContentConfig(**config_params),
+                            contents=self.conversation_history[channel_id],
+                        )
+                    except Exception:
+                        # If retry also fails, re-raise the original exception
+                        raise
                 else:
                     raise
 
@@ -1417,9 +1438,6 @@ async def _handle_auto_response(message) -> None:
             display_text = mode_indicator + response_text
 
             await bot.send_response(message.channel, display_text)
-        except bot.ThoughtSignatureDisabledError as e:
-            # thoughtSignature was disabled for this model
-            await message.channel.send(str(e))
         except Exception as e:
             await message.channel.send(f"An error occurred: {e}")
 

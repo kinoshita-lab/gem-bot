@@ -62,6 +62,12 @@ class Commands(commands.Cog):
 
         return recommended, other_models
 
+    async def _fetch_models_to_cache(self) -> None:
+        """Fetch models from API and cache them on the bot instance."""
+        recommended, all_models = await self._fetch_and_sort_models()
+        self.bot.recommended_models = recommended
+        self.bot.available_models = all_models
+
     def _get_message_preview(self, msg, max_length: int = 50) -> str:
         """Extract and truncate message content for preview.
 
@@ -138,30 +144,18 @@ class Commands(commands.Cog):
 
     async def model_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         """Autocomplete for model selection."""
-        # Check cache first or simple fallback if API is slow? 
-        # For now, we'll try to fetch. Since this runs on every keystroke, caching is ideal.
-        # But `self.bot` doesn't have a model cache yet. 
-        # We can implement a simple in-memory cache in the Cog or Bot.
-        # For this implementation, we will use a static list + recommended for speed, 
-        # or just Recommended if empty.
-        
-        # NOTE: Fetching from API every time is too slow for autocomplete.
-        # Ideally, we should cache the model list on startup or periodic refresh.
-        # For now, let's use the hardcoded RECOMMENDED_MODELS + a few known ones
-        # to ensure responsiveness.
-        
-        # Adding a few more known models for fallback
-        known_models = self.RECOMMENDED_MODELS + [
-            "gemini-1.5-pro",
-            "gemini-1.5-flash",
-            "gemini-1.0-pro"
+        if not self.bot.available_models:
+            await self._fetch_models_to_cache()
+
+        all_models = self.bot.recommended_models + [
+            m for m in self.bot.available_models if m not in self.bot.recommended_models
         ]
-        
+
         return [
             app_commands.Choice(name=model, value=model)
-            for model in known_models
+            for model in all_models
             if current.lower() in model.lower()
-        ][:25] # Limit to 25 choices
+        ][:25]
 
     async def branch_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         """Autocomplete for branch selection."""
