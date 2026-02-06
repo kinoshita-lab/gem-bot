@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import os
@@ -151,15 +152,32 @@ class GeminiBot(commands.Bot):
         """Load cogs when the bot starts."""
         await self.load_extension("cogs.commands")
 
-        # Fetch and cache available models from Gemini API
-        try:
-            from cogs.commands import Commands
-            cog = self.get_cog("Commands")
-            if cog:
-                await cog._fetch_models_to_cache()
-                print(f"Loaded {len(self.available_models)} usable Gemini models ({len(self.recommended_models)} recommended)")
-        except Exception as e:
-            print(f"Warning: Failed to cache models: {e}")
+        # Fetch and cache available models from Gemini API with retry
+        from cogs.commands import Commands
+        cog = self.get_cog("Commands")
+        if cog:
+            max_retries = 3
+            retry_delay = 2
+
+            for attempt in range(max_retries):
+                try:
+                    await cog._fetch_models_to_cache()
+                    print(f"Loaded {len(self.available_models)} usable Gemini models ({len(self.recommended_models)} recommended)")
+                    break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        print(f"Warning: Failed to cache models (attempt {attempt + 1}/{max_retries}): {e}")
+                        print(f"Retrying in {retry_delay} seconds...")
+                        await asyncio.sleep(retry_delay)
+                    else:
+                        print(f"ERROR: Failed to cache models after {max_retries} attempts")
+                        print(f"Error details: {type(e).__name__}: {e}")
+                        self.recommended_models = [
+                            "gemini-flash-latest",
+                            "gemini-3-pro-preview"
+                        ]
+                        self.available_models = self.recommended_models
+                        print(f"Fallback: Using {len(self.available_models)} recommended models only")
 
         # Load existing conversation histories from disk
         self._load_histories_from_disk()

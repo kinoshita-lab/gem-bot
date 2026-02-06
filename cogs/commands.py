@@ -190,7 +190,7 @@ class Commands(commands.Cog):
     async def model_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         """Autocomplete for model selection."""
         if not self.bot.available_models:
-            await self._fetch_models_to_cache()
+            return []
 
         all_models = self.bot.recommended_models + [
             m for m in self.bot.available_models if m not in self.bot.recommended_models
