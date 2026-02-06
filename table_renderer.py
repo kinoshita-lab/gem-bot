@@ -13,10 +13,30 @@ class TableRenderer:
     """
 
     # Regex for detecting table separator row (e.g., |---| or |:---:|)
-    SEPARATOR_PATTERN = re.compile(r"^\s*\|?(\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
+    # Matches tables with or without closing pipes, and handles alignment markers
+    # Supports formats: |---|---|, |:---|:---:|, :---|:---:, etc.
+    SEPARATOR_PATTERN = re.compile(
+        r"^\s*\|?"
+        r"(?:\s*:?-+:?\s*\|)+"
+        r"(?:\s*:?-+:?\s*)?"
+        r"\|?\s*$"
+    )
+
+    # Map language codes to Noto Sans CJK fonts
+    FONT_MAP = {
+        "ja": "Noto Sans CJK JP",
+        "zh": "Noto Sans CJK SC",
+        "zh-cn": "Noto Sans CJK SC",
+        "zh-tw": "Noto Sans CJK TC",
+        "ko": "Noto Sans CJK KR",
+    }
+    DEFAULT_FONT = "Noto Sans CJK JP"
 
     # LaTeX template with Japanese support and booktabs for nicer tables
-    LATEX_TEMPLATE = r"""\documentclass[dvipdfmx]{standalone}
+    LATEX_TEMPLATE = r"""\documentclass{standalone}
+\usepackage{luatexja-fontspec}
+\setmainjfont{FONT_NAME}
+\setmainfont{FONT_NAME}
 \usepackage{booktabs}
 \usepackage{xcolor}
 \pagecolor{white}
@@ -159,15 +179,57 @@ TABLE_BODY
 
         original = "\n".join(table_lines)
 
+        # Parse separator line (index 1) to get column alignments
+        separator_line = table_lines[1] if len(table_lines) > 1 else ""
+        alignments = self._parse_alignment(separator_line, len(headers))
+
         return {
             "headers": headers,
             "rows": rows,
+            "alignments": alignments,
             "start_line": start_line,
             "end_line": end_line,
             "start": start_pos,
             "end": end_pos,
             "original": original,
         }
+
+    def _parse_alignment(self, separator_line: str, num_cols: int) -> list[str]:
+        """Parse column alignment from Markdown separator row.
+
+        Args:
+            separator_line: Markdown separator row (e.g., "|:---|---:|").
+            num_cols: Number of columns in the table.
+
+        Returns:
+            List of alignment characters ('l' for left, 'c' for center, 'r' for right).
+            Default is 'l' (left-aligned) if not specified.
+        """
+        alignments = []
+
+        if not separator_line:
+            return ["l"] * num_cols
+
+        cells = separator_line.strip().strip("|").split("|")
+
+        for cell in cells:
+            cell = cell.strip()
+            if not cell:
+                continue
+
+            if cell.startswith(":") and cell.endswith(":"):
+                alignments.append("c")
+            elif cell.startswith(":"):
+                alignments.append("l")
+            elif cell.endswith(":"):
+                alignments.append("r")
+            else:
+                alignments.append("l")
+
+        while len(alignments) < num_cols:
+            alignments.append("l")
+
+        return alignments
 
     def _parse_row(self, line: str) -> list[str]:
         """Parse a table row, splitting by | and stripping whitespace.
@@ -186,14 +248,19 @@ TABLE_BODY
         self,
         headers: list[str],
         rows: list[list[str]],
+        alignments: list[str] | None = None,
         dpi: int = 300,
+        language: str = "ja",
     ) -> bytes | None:
         """Render a table to PNG image using LaTeX.
 
         Args:
             headers: List of header cell values.
             rows: List of rows, each a list of cell values.
+            alignments: List of alignment characters ('l', 'c', 'r') for each column.
+                        Default is left-aligned for all columns.
             dpi: Resolution in dots per inch.
+            language: Language code for font selection (e.g., "ja", "zh").
 
         Returns:
             PNG image data as bytes, or None if rendering failed.
@@ -201,9 +268,15 @@ TABLE_BODY
         if not self.enabled or not headers or not rows:
             return None
 
-        # Determine column spec (center align by default with vertical lines)
+        # Determine font based on language
+        font_name = self.FONT_MAP.get(language, self.DEFAULT_FONT)
+
+        # Determine column spec with alignments (default left-aligned)
         num_cols = len(headers)
-        col_spec = "|" + "|".join(["c"] * num_cols) + "|"
+        if alignments is None:
+            alignments = ["l"] * num_cols
+
+        col_spec = "|" + "|".join(alignments) + "|"
 
         # Build LaTeX table body
         table_body = []
@@ -233,21 +306,21 @@ TABLE_BODY
         # Generate LaTeX source
         tex_content = self.LATEX_TEMPLATE.replace("COLUMN_SPEC", col_spec)
         tex_content = tex_content.replace("TABLE_BODY", "\n".join(table_body))
+        tex_content = tex_content.replace("FONT_NAME", font_name)
 
         # Create temporary directory and render
         with tempfile.TemporaryDirectory() as tmpdir:
             tmppath = Path(tmpdir)
             tex_file = tmppath / "table.tex"
-            dvi_file = tmppath / "table.dvi"
             pdf_file = tmppath / "table.pdf"
             png_file = tmppath / "table.png"
 
             tex_file.write_text(tex_content, encoding="utf-8")
 
             try:
-                # Run platex to generate .dvi
-                platex_proc = await asyncio.create_subprocess_exec(
-                    "platex",
+                # Run lualatex to generate .pdf directly
+                lualatex_proc = await asyncio.create_subprocess_exec(
+                    "lualatex",
                     "-interaction=nonstopmode",
                     "-halt-on-error",
                     "-output-directory=" + str(tmppath),
@@ -256,22 +329,9 @@ TABLE_BODY
                     stderr=asyncio.subprocess.DEVNULL,
                     cwd=tmpdir,
                 )
-                await asyncio.wait_for(platex_proc.wait(), timeout=30.0)
+                await asyncio.wait_for(lualatex_proc.wait(), timeout=30.0)
 
-                if platex_proc.returncode != 0 or not dvi_file.exists():
-                    return None
-
-                # Run dvipdfmx to generate .pdf
-                dvipdfmx_proc = await asyncio.create_subprocess_exec(
-                    "dvipdfmx",
-                    str(dvi_file),
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                    cwd=tmpdir,
-                )
-                await asyncio.wait_for(dvipdfmx_proc.wait(), timeout=30.0)
-
-                if dvipdfmx_proc.returncode != 0 or not pdf_file.exists():
+                if lualatex_proc.returncode != 0 or not pdf_file.exists():
                     return None
 
                 # Run gs (Ghostscript) to generate .png from .pdf
@@ -332,6 +392,11 @@ TABLE_BODY
         Returns:
             Escaped text.
         """
+        # First, protect \\ (LaTeX newline) with a temporary placeholder
+        temp_placeholder = "\x00TEMP_NEWLINE\x00"
+        escaped = text.replace("\\\\", temp_placeholder)
+
+        # Escape other special characters
         replacements = {
             "&": r"\&",
             "%": r"\%",
@@ -342,12 +407,13 @@ TABLE_BODY
             "}": r"\}",
             "~": r"\textasciitilde{}",
             "^": r"\textasciicircum{}",
-            "\\": r"\textbackslash{}",
         }
 
-        escaped = text
         for char, replacement in replacements.items():
             escaped = escaped.replace(char, replacement)
+
+        # Restore \\ (LaTeX newline)
+        escaped = escaped.replace(temp_placeholder, r"\\")
 
         return escaped
 
@@ -398,6 +464,7 @@ TABLE_BODY
                 "content": {
                     "headers": table["headers"],
                     "rows": table["rows"],
+                    "alignments": table["alignments"],
                 },
                 "original": table["original"],
             })

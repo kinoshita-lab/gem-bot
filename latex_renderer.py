@@ -1,7 +1,7 @@
 """LaTeX rendering utilities for Discord output.
 
 Detects LaTeX formulas in text and renders them as PNG images
-using local LaTeX installation (platex + dvipdfmx + Ghostscript).
+using local LaTeX installation (lualatex + Ghostscript).
 """
 
 import asyncio
@@ -13,7 +13,7 @@ from pathlib import Path
 class LatexRenderer:
     """Renders LaTeX formulas to PNG images using local LaTeX installation.
 
-    Uses pLaTeX, dvipdfmx, and Ghostscript for rendering.
+    Uses LuaLaTeX and Ghostscript for rendering.
     """
 
     # LaTeX patterns - only display math (complex formulas)
@@ -24,8 +24,21 @@ class LatexRenderer:
         (r"\\\[(.+?)\\\]", "display"),  # \[...\]
     ]
 
+    # Map language codes to Noto Sans CJK fonts
+    FONT_MAP = {
+        "ja": "Noto Sans CJK JP",
+        "zh": "Noto Sans CJK SC",
+        "zh-cn": "Noto Sans CJK SC",
+        "zh-tw": "Noto Sans CJK TC",
+        "ko": "Noto Sans CJK KR",
+    }
+    DEFAULT_FONT = "Noto Sans CJK JP"
+
     # LaTeX template for math formulas (white background, black text)
-    LATEX_TEMPLATE = r"""\documentclass[dvipdfmx]{jsarticle}
+    LATEX_TEMPLATE = r"""\documentclass{standalone}
+\usepackage{luatexja-fontspec}
+\setmainjfont{FONT_NAME}
+\setmainfont{FONT_NAME}
 \usepackage{amsmath,amssymb}
 \usepackage{xcolor}
 \pagecolor{white}
@@ -106,12 +119,14 @@ $\displaystyle FORMULA $
         self,
         latex: str,
         dpi: int = 300,
+        language: str = "ja",
     ) -> bytes | None:
         """Render a LaTeX formula to PNG image using local LaTeX.
 
         Args:
             latex: LaTeX formula string (without delimiters).
             dpi: Resolution in dots per inch.
+            language: Language code for font selection (e.g., "ja", "zh").
 
         Returns:
             PNG image data as bytes, or None if rendering failed.
@@ -119,24 +134,27 @@ $\displaystyle FORMULA $
         if not self.enabled:
             return None
 
+        # Determine font based on language
+        font_name = self.FONT_MAP.get(language, self.DEFAULT_FONT)
+
         # Create temporary directory for LaTeX files
         with tempfile.TemporaryDirectory() as tmpdir:
             tmppath = Path(tmpdir)
             tex_file = tmppath / "formula.tex"
-            dvi_file = tmppath / "formula.dvi"
             pdf_file = tmppath / "formula.pdf"
             png_file = tmppath / "formula.png"
 
             # Generate LaTeX source
             tex_content = self.LATEX_TEMPLATE.replace("FORMULA", latex)
+            tex_content = tex_content.replace("FONT_NAME", font_name)
 
             # Write .tex file
             tex_file.write_text(tex_content, encoding="utf-8")
 
             try:
-                # Run platex to generate .dvi
-                platex_proc = await asyncio.create_subprocess_exec(
-                    "platex",
+                # Run lualatex to generate .pdf directly
+                lualatex_proc = await asyncio.create_subprocess_exec(
+                    "lualatex",
                     "-interaction=nonstopmode",
                     "-halt-on-error",
                     "-output-directory=" + str(tmppath),
@@ -145,22 +163,9 @@ $\displaystyle FORMULA $
                     stderr=asyncio.subprocess.DEVNULL,
                     cwd=tmpdir,
                 )
-                await asyncio.wait_for(platex_proc.wait(), timeout=30.0)
+                await asyncio.wait_for(lualatex_proc.wait(), timeout=30.0)
 
-                if platex_proc.returncode != 0 or not dvi_file.exists():
-                    return None
-
-                # Run dvipdfmx to generate .pdf
-                dvipdfmx_proc = await asyncio.create_subprocess_exec(
-                    "dvipdfmx",
-                    str(dvi_file),
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                    cwd=tmpdir,
-                )
-                await asyncio.wait_for(dvipdfmx_proc.wait(), timeout=30.0)
-
-                if dvipdfmx_proc.returncode != 0 or not pdf_file.exists():
+                if lualatex_proc.returncode != 0 or not pdf_file.exists():
                     return None
 
                 # Run gs (Ghostscript) to generate .png from .pdf
