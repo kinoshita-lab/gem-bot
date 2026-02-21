@@ -166,7 +166,30 @@ class Commands(commands.Cog):
             lines.append(f"GEMINI_CHANNEL_ID={channel_id}")
 
         env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    
+
+    def _remove_channel_from_env(self, channel_id: int) -> None:
+        """Remove a channel ID from the .env file.
+
+        Args:
+            channel_id: Channel ID to remove.
+        """
+        env_path = Path(".env")
+        if not env_path.exists():
+            raise FileNotFoundError(".env file not found")
+
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+
+        for i, line in enumerate(lines):
+            if line.startswith("GEMINI_CHANNEL_ID="):
+                existing = line.split("=", 1)[1].strip()
+                if existing:
+                    ids = [id.strip() for id in existing.split(",") if id.strip()]
+                    ids = [id for id in ids if id != str(channel_id)]
+                    lines[i] = f"GEMINI_CHANNEL_ID={','.join(ids)}"
+                break
+
+        env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
     async def _send_google_setup_guide(self, interaction: discord.Interaction) -> None:
         """Send a helpful setup guide when credentials.json is missing or invalid."""
         # Create a temporary manager just to check configuration status
@@ -501,6 +524,31 @@ class Commands(commands.Cog):
             )
         except Exception as e:
             await interaction.followup.send(self.t("channel_add_error", error=e))
+
+    @channel_group.command(name="remove")
+    @app_commands.describe(channel="The channel to remove")
+    async def channel_remove(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        """Remove a channel from the enabled channels list."""
+        await interaction.response.defer()
+
+        try:
+            cid = channel.id
+            channel_name = channel.name
+
+            if cid not in self.bot.enabled_channel_ids:
+                await interaction.followup.send(
+                    self.t("channel_remove_not_found", id=cid)
+                )
+                return
+
+            self._remove_channel_from_env(cid)
+            self.bot.enabled_channel_ids.discard(cid)
+
+            await interaction.followup.send(
+                self.t("channel_remove_success", id=cid, name=channel_name)
+            )
+        except Exception as e:
+            await interaction.followup.send(self.t("channel_remove_error", error=e))
 
     # --- History Group ---
 
