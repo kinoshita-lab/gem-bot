@@ -17,7 +17,7 @@ class Commands(commands.Cog):
     """All bot commands."""
 
     # Recommended models shown at the top of the list
-    RECOMMENDED_MODELS = ["gemini-flash-latest", "gemini-3-pro-preview"]
+    RECOMMENDED_MODELS = ["gemini-flash-latest", "gemini-pro-latest"]
 
     # Available tool modes
     # Internal values: "default" (Google Search), "calendar", "todo"
@@ -374,15 +374,19 @@ class Commands(commands.Cog):
                     inline=False,
                 )
 
-            # Add other models in chunks (simplified for slash command embed)
+            # Add other models in chunks to avoid embed field limits
             if other_models:
-                # Just show first 20 other models to avoid hit limits
-                chunk = other_models[:20]
-                value = "\n".join(f"• {name}" for name in chunk)
-                if len(other_models) > 20:
-                    value += f"\n... and {len(other_models) - 20} more"
-                
-                embed.add_field(name=self.t("model_list_field"), value=value, inline=False)
+                chunk_size = 20
+                for i, start_idx in enumerate(range(0, len(other_models), chunk_size)):
+                    chunk = other_models[start_idx:start_idx + chunk_size]
+                    value = "\n".join(f"• {name}" for name in chunk)
+                    
+                    if i == 0:
+                        field_name = self.t("model_list_field")
+                    else:
+                        field_name = self.t("model_list_field_continued", num=i + 1)
+                    
+                    embed.add_field(name=field_name, value=value, inline=False)
 
             embed.set_footer(text=self.t("model_list_footer", count=total_count))
             await interaction.followup.send(embed=embed)
@@ -395,16 +399,26 @@ class Commands(commands.Cog):
     async def model_set(self, interaction: discord.Interaction, model: str):
         """Set the Gemini model to use."""
         channel_id = interaction.channel_id
-        
-        # Verify model exists? 
-        # Actually, allowing any string is fine as new models might appear before we update cache.
-        # But if we wanted to be strict, we'd check against API list.
-        # For now, trust the user input (especially with autocomplete help).
-        
+
         self.bot.set_model(channel_id, model)
         await interaction.response.send_message(
             self.t("model_select_changed", model=model)
         )
+
+    @model_group.command(name="update")
+    async def model_update(self, interaction: discord.Interaction):
+        """Refresh the cached model list from Gemini API."""
+        await interaction.response.defer()
+
+        try:
+            await self._fetch_models_to_cache()
+            await interaction.followup.send(
+                self.t("model_update_success",
+                       total=len(self.bot.available_models),
+                       recommended=len(self.bot.recommended_models))
+            )
+        except Exception as e:
+            await interaction.followup.send(self.t("model_update_error", error=e))
 
     # --- History Group ---
 
