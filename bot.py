@@ -41,21 +41,7 @@ if not GEMINI_CHANNEL_ID:
     print("Please specify at least one channel ID where the bot should respond.")
     exit(1)
 
-# Parse GEMINI_CHANNEL_ID (can be comma-separated for multiple channels)
-enabled_channel_ids: set[int] = set()
-for channel_id_str in GEMINI_CHANNEL_ID.split(","):
-    channel_id_str = channel_id_str.strip()
-    if channel_id_str:
-        try:
-            enabled_channel_ids.add(int(channel_id_str))
-        except ValueError:
-            print(
-                f"Warning: Invalid channel ID '{channel_id_str}' in GEMINI_CHANNEL_ID"
-            )
-
-if not enabled_channel_ids:
-    print("Error: No valid channel IDs found in GEMINI_CHANNEL_ID.")
-    exit(1)
+DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID")
 
 
 class GeminiBot(commands.Bot):
@@ -73,6 +59,9 @@ class GeminiBot(commands.Bot):
             api_key=GEMINI_API_KEY,
             http_options=types.HttpOptions(timeout=300000),  # 5 minutes in milliseconds
         )
+
+        # Enabled channel IDs (parsed from GEMINI_CHANNEL_ID env var)
+        self.enabled_channel_ids: set[int] = self._parse_channel_ids(GEMINI_CHANNEL_ID or "")
 
         # Default model (used when a channel doesn't have a specific model set)
         self.default_model: str = "gemini-flash-latest"
@@ -127,6 +116,25 @@ class GeminiBot(commands.Bot):
 
         # Table renderer for Markdown tables
         self.table_renderer = TableRenderer(enabled=True)
+
+    def _parse_channel_ids(self, channel_id_str: str) -> set[int]:
+        """Parse comma-separated channel IDs from environment variable.
+
+        Args:
+            channel_id_str: Comma-separated channel ID string.
+
+        Returns:
+            Set of valid channel IDs.
+        """
+        channel_ids: set[int] = set()
+        for id_str in channel_id_str.split(","):
+            id_str = id_str.strip()
+            if id_str:
+                try:
+                    channel_ids.add(int(id_str))
+                except ValueError:
+                    print(f"Warning: Invalid channel ID '{id_str}' in GEMINI_CHANNEL_ID")
+        return channel_ids
 
     def get_tool_mode(self, channel_id: int) -> str:
         """Get the current tool mode for a channel.
@@ -1130,7 +1138,7 @@ bot = GeminiBot(command_prefix="!", intents=intents, help_command=None)
 @bot.event
 async def on_ready():
     print(f"We have logged in as {bot.user}")
-    print(f"Responding to messages in channels: {enabled_channel_ids}")
+    print(f"Responding to messages in channels: {bot.enabled_channel_ids}")
 
 
 
@@ -1501,7 +1509,7 @@ async def on_message(message):
         return
 
     # Auto-respond in enabled channels
-    if message.channel.id in enabled_channel_ids:
+    if message.channel.id in bot.enabled_channel_ids:
         await _handle_auto_response(message)
 
 

@@ -3,6 +3,7 @@ import base64
 import io
 import zipfile
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 import discord
@@ -139,6 +140,32 @@ class Commands(commands.Cog):
         if hasattr(self.bot, "calendar_auth") and self.bot.calendar_auth is not None:
             return self.bot.calendar_auth
         return None
+
+    def _add_channel_to_env(self, channel_id: int) -> None:
+        """Add a channel ID to the .env file.
+
+        Args:
+            channel_id: Channel ID to add.
+        """
+        env_path = Path(".env")
+        if not env_path.exists():
+            raise FileNotFoundError(".env file not found")
+
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+
+        for i, line in enumerate(lines):
+            if line.startswith("GEMINI_CHANNEL_ID="):
+                existing = line.split("=", 1)[1].strip()
+                if existing:
+                    new_value = f"{existing},{channel_id}"
+                else:
+                    new_value = str(channel_id)
+                lines[i] = f"GEMINI_CHANNEL_ID={new_value}"
+                break
+        else:
+            lines.append(f"GEMINI_CHANNEL_ID={channel_id}")
+
+        env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     
     async def _send_google_setup_guide(self, interaction: discord.Interaction) -> None:
         """Send a helpful setup guide when credentials.json is missing or invalid."""
@@ -260,6 +287,7 @@ class Commands(commands.Cog):
     
     google_group = app_commands.Group(name="google", parent=gem_group, description="Google integration")
     thought_signature_group = app_commands.Group(name="thought-signature", parent=gem_group, description="Thought signature management")
+    channel_group = app_commands.Group(name="channel", parent=gem_group, description="Channel management")
 
 
     # --- Basic Commands ---
@@ -419,6 +447,60 @@ class Commands(commands.Cog):
             )
         except Exception as e:
             await interaction.followup.send(self.t("model_update_error", error=e))
+
+    # --- Channel Group ---
+
+    @channel_group.command(name="list")
+    async def channel_list(self, interaction: discord.Interaction):
+        """List all channels where the bot is enabled."""
+        channel_ids = self.bot.enabled_channel_ids
+
+        embed = discord.Embed(
+            title=self.t("channel_list_title"),
+            description=self.t("channel_list_description"),
+            color=discord.Color.blue(),
+        )
+
+        if channel_ids:
+            channel_lines = [f"• <#{cid}> (`{cid}`)" for cid in sorted(channel_ids)]
+            embed.add_field(
+                name=self.t("channel_list_field"),
+                value="\n".join(channel_lines),
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name=self.t("channel_list_field"),
+                value=self.t("channel_list_empty"),
+                inline=False,
+            )
+
+        await interaction.response.send_message(embed=embed)
+
+    @channel_group.command(name="add")
+    @app_commands.describe(channel="The channel to add")
+    async def channel_add(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        """Add a channel to the enabled channels list."""
+        await interaction.response.defer()
+
+        try:
+            cid = channel.id
+            channel_name = channel.name
+
+            if cid in self.bot.enabled_channel_ids:
+                await interaction.followup.send(
+                    self.t("channel_add_already_exists", id=cid)
+                )
+                return
+
+            self._add_channel_to_env(cid)
+            self.bot.enabled_channel_ids.add(cid)
+
+            await interaction.followup.send(
+                self.t("channel_add_success", id=cid, name=channel_name)
+            )
+        except Exception as e:
+            await interaction.followup.send(self.t("channel_add_error", error=e))
 
     # --- History Group ---
 
