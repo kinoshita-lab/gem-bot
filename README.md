@@ -469,21 +469,35 @@ Available parameters:
 | `/gem channel-prompt show` | Show channel instruction |
 | `/gem channel-prompt download` | Download channel instruction |
 | `/gem channel-prompt clear` | Clear channel instruction |
+| `/gem channel list` | List enabled channels |
+| `/gem channel add` | Add a channel |
+| `/gem channel remove` | Remove a channel |
 
 ---
 
 ## Channel Configuration
 
 The bot responds to all messages in the channels specified by `GEMINI_CHANNEL_ID`.
-This setting is required for the bot to function.
+
+### Initial Setup
+
+The first channel must be configured manually in the `.env` file:
 
 ```bash
-# Single channel
 GEMINI_CHANNEL_ID=123456789012345678
-
-# Multiple channels
-GEMINI_CHANNEL_ID=123456789012345678,987654321098765432
 ```
+
+### Adding More Channels
+
+Once the bot is running in at least one channel, you can add more channels using the `/gem channel add` command from within an enabled channel. Select a channel from the picker UI - it will be persisted to the `.env` file automatically.
+
+### Managing Channels
+
+| Command | Description |
+|---------|-------------|
+| `/gem channel list` | List all enabled channels |
+| `/gem channel add` | Add a channel (channel picker) |
+| `/gem channel remove` | Remove a channel (channel picker) |
 
 ### How to Get Channel ID
 

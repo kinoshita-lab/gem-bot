@@ -612,21 +612,35 @@ uv run python bot.py
 | `/gem channel-prompt show` | チャンネル指示書を表示 |
 | `/gem channel-prompt download` | チャンネル指示書をダウンロード |
 | `/gem channel-prompt clear` | チャンネル指示書を削除 |
+| `/gem channel list` | 有効なチャンネル一覧を表示 |
+| `/gem channel add` | チャンネルを追加 |
+| `/gem channel remove` | チャンネルを削除 |
 
 ---
 
 ## チャンネル設定
 
 ボットは`GEMINI_CHANNEL_ID`で指定されたチャンネルの全メッセージに応答します。
-この設定はボットの動作に必須です。
+
+### 初期設定
+
+最初のチャンネルは `.env` ファイルに手動で設定する必要があります：
 
 ```bash
-# 単一チャンネル
 GEMINI_CHANNEL_ID=123456789012345678
-
-# 複数チャンネル
-GEMINI_CHANNEL_ID=123456789012345678,987654321098765432
 ```
+
+### チャンネルの追加
+
+ボットが少なくとも1つのチャンネルで動作していれば、有効なチャンネルから `/gem channel add` コマンドを使用して追加のチャンネルを追加できます。チャンネル選択UIから選択するだけで、自動的に `.env` ファイルに保存されます。
+
+### チャンネル管理
+
+| コマンド | 説明 |
+|---------|------|
+| `/gem channel list` | 有効なチャンネル一覧を表示 |
+| `/gem channel add` | チャンネルを追加（チャンネル選択UI） |
+| `/gem channel remove` | チャンネルを削除（チャンネル選択UI） |
 
 ### チャンネルIDの取得方法
 
