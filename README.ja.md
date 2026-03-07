@@ -17,6 +17,7 @@ Discord上でGemini APIを使用してAIと会話できるボットです。
 - **2階層システムプロンプト** - グローバルマスター指示書 + チャンネルごとのカスタマイズで柔軟なAI動作
 - **生成設定** - temperature、top_p などのパラメータをチャンネルごとに設定
 - **Markdownエクスポート** - 会話履歴をMarkdownファイルと画像をZIPでエクスポート
+- **Markdownからのインポート** - エクスポートしたZIP/MDファイルから会話履歴をインポート
 - **多言語対応** - 日本語/英語（拡張可能）
 - **Googleカレンダー連携** - 自然言語でカレンダーイベントを管理
 - **Google Tasks連携** - 自然言語でTODOリストを管理
@@ -578,6 +579,7 @@ uv run python bot.py
 | `/gem history delete <番号>` | 指定した番号のメッセージを削除 |
 | `/gem history clear` | 会話履歴を全て削除 |
 | `/gem history export [ファイル名]` | 履歴をMarkdownでエクスポート（画像はZIP） |
+| `/gem history import <ファイル>` | ZIPまたはMDファイルから履歴をインポート |
 
 ### ブランチ管理
 
@@ -679,7 +681,22 @@ GEMINI_CHANNEL_ID=123456789012345678
 - 再起動後も履歴が保持される
 - ブランチ・マージで会話を分岐可能
 - `/gem history export`でMarkdownにエクスポート
+- `/gem history import`でZIP/MDからインポート
 - 自動コミットによる完全なGit履歴
+
+### エクスポート/インポート
+
+**エクスポート**: `/gem history export [ファイル名]` で会話履歴をダウンロード。
+- ZIPファイルには以下が含まれます:
+  - `conversation.md` - メタデータ付きのMarkdown形式の会話
+  - `files/` - 画像添付ファイル（ある場合）
+  - `thought_signature.txt` - 思考署名（ある場合）
+- 画像がない場合、単一の`.md`ファイル（署名あり）または`.md`ファイルのみでエクスポート
+
+**インポート**: `/gem history import <ファイル>` で会話履歴を復元。
+- `/gem history export`でエクスポートしたZIPまたはMDファイルに対応
+- メッセージ、画像、思考署名を復元
+- **注意**: 現在のチャンネルの会話履歴を上書きします
 
 Git操作とバージョン管理の詳細については、[Git バージョン管理](#git-バージョン管理) を参照してください。
 

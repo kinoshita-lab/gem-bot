@@ -310,6 +310,7 @@ class Commands(commands.Cog):
     
     google_group = app_commands.Group(name="google", parent=gem_group, description="Google integration")
     thought_signature_group = app_commands.Group(name="thought-signature", parent=gem_group, description="Thought signature management")
+    thought_group = app_commands.Group(name="thought", parent=gem_group, description="Thought process display settings")
     channel_group = app_commands.Group(name="channel", parent=gem_group, description="Channel management")
 
 
@@ -765,6 +766,118 @@ class Commands(commands.Cog):
         except Exception as e:
             await interaction.followup.send(self.t("history_error", error=e))
 
+    @history_group.command(name="import")
+    @app_commands.describe(file="ZIP or MD file exported from /gem history export")
+    async def history_import(self, interaction: discord.Interaction, file: discord.Attachment):
+        """Import conversation history from ZIP or MD file."""
+        await interaction.response.defer()
+        channel_id = interaction.channel_id
+
+        import re
+
+        try:
+            filename = file.filename.lower()
+
+            if filename.endswith(".zip"):
+                zip_data = await file.read()
+                zip_buffer = io.BytesIO(zip_data)
+
+                messages = []
+                model = ""
+                images = {}
+                thought_signature = None
+
+                with zipfile.ZipFile(zip_buffer, "r") as zf:
+                    namelist = zf.namelist()
+
+                    if "conversation.md" not in namelist:
+                        await interaction.followup.send(self.t("history_import_no_conversation"))
+                        return
+
+                    md_content = zf.read("conversation.md").decode("utf-8")
+
+                    model_match = re.search(r"- \*\*Model\*\*: (.+)", md_content)
+                    if model_match:
+                        model = model_match.group(1).strip()
+
+                    pattern = r"### (User|Model) \(([^)]+)\)\n\n(.*?)(?=### |\Z)"
+                    matches = re.findall(pattern, md_content, re.DOTALL)
+
+                    for role_str, timestamp, content in matches:
+                        role = role_str.lower()
+                        content = content.strip()
+
+                        image_paths = []
+                        img_pattern = r"!\[image\]\(([^)]+)\)"
+                        img_matches = re.findall(img_pattern, content)
+                        for img_path in img_matches:
+                            image_paths.append(img_path)
+                            if img_path in namelist:
+                                images[img_path] = zf.read(img_path)
+
+                        content_cleaned = re.sub(img_pattern, "", content).strip()
+
+                        msg = {
+                            "role": role,
+                            "content": content_cleaned,
+                            "timestamp": timestamp,
+                        }
+                        if image_paths:
+                            msg["images"] = image_paths
+                        messages.append(msg)
+
+                    if "thought_signature.txt" in namelist:
+                        signature_b64 = zf.read("thought_signature.txt").decode("utf-8").strip()
+                        thought_signature = base64.b64decode(signature_b64)
+
+                self.bot.history_manager.import_conversation(
+                    channel_id, messages, model, images, thought_signature
+                )
+
+            elif filename.endswith(".md"):
+                md_content = await file.read()
+                md_text = md_content.decode("utf-8")
+
+                messages = []
+                model = ""
+
+                model_match = re.search(r"- \*\*Model\*\*: (.+)", md_text)
+                if model_match:
+                    model = model_match.group(1).strip()
+
+                pattern = r"### (User|Model) \(([^)]+)\)\n\n(.*?)(?=### |\Z)"
+                matches = re.findall(pattern, md_text, re.DOTALL)
+
+                for role_str, timestamp, content in matches:
+                    role = role_str.lower()
+                    content_cleaned = re.sub(r"!\[image\]\([^)]+\)", "", content).strip()
+                    messages.append({
+                        "role": role,
+                        "content": content_cleaned,
+                        "timestamp": timestamp,
+                    })
+
+                self.bot.history_manager.import_conversation(
+                    channel_id, messages, model
+                )
+
+            else:
+                await interaction.followup.send(self.t("history_import_invalid_format"))
+                return
+
+            self.bot._reload_history_from_disk(channel_id)
+
+            msg_count = len(messages)
+            img_count = len(images) if filename.endswith(".zip") else 0
+            has_signature = thought_signature is not None if filename.endswith(".zip") else False
+
+            await interaction.followup.send(
+                self.t("history_import_success", count=msg_count, images=img_count, signature=has_signature)
+            )
+
+        except Exception as e:
+            await interaction.followup.send(self.t("history_import_error", error=e))
+
     # --- Branch Group ---
 
     @branch_group.command(name="list")
@@ -1215,6 +1328,28 @@ class Commands(commands.Cog):
         channel_id = interaction.channel_id
         self.bot.history_manager.clear_thought_signature(channel_id)
         await interaction.response.send_message(self.t("thought_signature_cleared"))
+
+    # --- Thought Process Commands ---
+
+    @thought_group.command(name="toggle")
+    async def thought_toggle(self, interaction: discord.Interaction):
+        """Toggle thought process display for this channel."""
+        channel_id = interaction.channel_id
+        current = self.bot.history_manager.load_show_thought(channel_id)
+        new_value = not current
+        self.bot.history_manager.save_show_thought(channel_id, new_value)
+        
+        status = self.t("thought_status_enabled") if new_value else self.t("thought_status_disabled")
+        await interaction.response.send_message(self.t("thought_toggled", status=status))
+
+    @thought_group.command(name="status")
+    async def thought_status(self, interaction: discord.Interaction):
+        """Show current thought process display setting."""
+        channel_id = interaction.channel_id
+        current = self.bot.history_manager.load_show_thought(channel_id)
+        
+        status = self.t("thought_status_enabled") if current else self.t("thought_status_disabled")
+        await interaction.response.send_message(self.t("thought_current_status", status=status))
 
 
 async def setup(bot: commands.Bot):

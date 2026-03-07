@@ -271,5 +271,14 @@
   "thought_signature_upload_success": "思考署名をアップロードして設定しました。",
   "thought_signature_upload_error": "思考署名のアップロードに失敗しました: {error}",
   "thought_signature_cleared": "思考署名をクリアしました。",
-  "thought_signature_disabled_for_model": "モデル `{model}` で思考署名を無効化しました。署名なしで再試行中..."
+  "thought_signature_disabled_for_model": "モデル `{model}` で思考署名を無効化しました。署名なしで再試行中...",
+  "thought_process_header": "**思考プロセス:**",
+  "thought_status_enabled": "有効",
+  "thought_status_disabled": "無効",
+  "thought_toggled": "思考プロセス表示を{status}にしました。",
+  "thought_current_status": "思考プロセス表示: {status}",
+  "history_import_success": "{count}件のメッセージ、{images}枚の画像、署名: {signature}をインポートしました。",
+  "history_import_error": "履歴のインポートに失敗しました: {error}",
+  "history_import_invalid_format": "無効なファイル形式です。/gem history export でエクスポートした ZIP または MD ファイルをアップロードしてください。",
+  "history_import_no_conversation": "ZIPファイルに conversation.md が見つかりません。"
 }

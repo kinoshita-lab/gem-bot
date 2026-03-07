@@ -588,6 +588,28 @@ class GeminiBot(commands.Bot):
                 return part.thought_signature
         return None
 
+    def _extract_thought_text(self, response) -> str | None:
+        """Extract thought process text from Gemini response.
+
+        Args:
+            response: Gemini API response.
+
+        Returns:
+            Thought process text, or None if not found.
+        """
+        if not response.candidates:
+            return None
+
+        candidate = response.candidates[0]
+        if not candidate.content or not candidate.content.parts:
+            return None
+
+        for part in candidate.content.parts:
+            if hasattr(part, "thought") and part.thought:
+                if hasattr(part, "text") and part.text:
+                    return part.text
+        return None
+
     # =========================================================================
     # ask_gemini Helper Methods
     # =========================================================================
@@ -874,6 +896,12 @@ class GeminiBot(commands.Bot):
             if new_signature:
                 self.history_manager.save_thought_signature(channel_id, new_signature)
 
+            # Extract thought process text if enabled
+            show_thought = self.history_manager.load_show_thought(channel_id)
+            thought_text = None
+            if show_thought:
+                thought_text = self._extract_thought_text(response)
+
             # Process response (handle function calls if in calendar or todo mode)
             tool_mode = self.get_tool_mode(channel_id)
             if tool_mode in ("calendar", "todo"):
@@ -889,6 +917,11 @@ class GeminiBot(commands.Bot):
                 if grounding_sources:
                     sources_text = self._format_grounding_sources(grounding_sources)
                     response_text = response_text + sources_text
+
+            # Prepend thought process as spoiler if enabled
+            if thought_text:
+                thought_header = self.i18n.t("thought_process_header")
+                response_text = f"||{thought_header}\n\n{thought_text}||\n\n{response_text}"
 
             # Add model's response to history
             self.conversation_history[channel_id].append(

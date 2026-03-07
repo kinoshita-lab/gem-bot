@@ -271,5 +271,14 @@
   "thought_signature_upload_success": "Thought signature uploaded and set.",
   "thought_signature_upload_error": "Failed to upload thought signature: {error}",
   "thought_signature_cleared": "Thought signature cleared.",
-  "thought_signature_disabled_for_model": "Thought signature disabled for model `{model}`. Retrying without signature..."
+  "thought_signature_disabled_for_model": "Thought signature disabled for model `{model}`. Retrying without signature...",
+  "thought_process_header": "**Thought Process:**",
+  "thought_status_enabled": "enabled",
+  "thought_status_disabled": "disabled",
+  "thought_toggled": "Thought process display is now {status}.",
+  "thought_current_status": "Thought process display: {status}",
+  "history_import_success": "Imported {count} message(s), {images} image(s), signature: {signature}.",
+  "history_import_error": "Failed to import history: {error}",
+  "history_import_invalid_format": "Invalid file format. Please upload a ZIP or MD file exported from /gem history export.",
+  "history_import_no_conversation": "conversation.md not found in the ZIP file."
 }

@@ -1094,3 +1094,69 @@ class HistoryManager:
         if channel_key in channels and "thought_signature" in channels[channel_key]:
             del channels[channel_key]["thought_signature"]
             self._save_global_config(config)
+
+    def load_show_thought(self, channel_id: int) -> bool:
+        """Load whether to show thought process for a channel.
+
+        Args:
+            channel_id: Discord channel ID.
+
+        Returns:
+            True if thought process should be shown, False otherwise.
+        """
+        config = self._load_global_config()
+        channels = config.get("channels", {})
+        channel_config = channels.get(str(channel_id), {})
+        return channel_config.get("show_thought", False)
+
+    def save_show_thought(self, channel_id: int, show: bool) -> None:
+        """Save whether to show thought process for a channel.
+
+        Args:
+            channel_id: Discord channel ID.
+            show: Whether to show thought process.
+        """
+        config = self._load_global_config()
+
+        if "channels" not in config:
+            config["channels"] = {}
+
+        channel_key = str(channel_id)
+        if channel_key not in config["channels"]:
+            config["channels"][channel_key] = {}
+
+        config["channels"][channel_key]["show_thought"] = show
+        self._save_global_config(config)
+
+    def import_conversation(
+        self,
+        channel_id: int,
+        messages: list[dict[str, Any]],
+        model: str,
+        images: dict[str, bytes] | None = None,
+        thought_signature: bytes | None = None,
+    ) -> None:
+        """Import conversation history with optional images and thought signature.
+
+        Args:
+            channel_id: Discord channel ID.
+            messages: List of message dicts with role, content, timestamp, images.
+            model: Model name.
+            images: Dict mapping relative paths to image bytes.
+            thought_signature: Optional thought signature bytes.
+        """
+        self._ensure_repo(channel_id)
+
+        if images:
+            files_dir = self._get_files_dir(channel_id)
+            files_dir.mkdir(parents=True, exist_ok=True)
+
+            for relative_path, image_data in images.items():
+                file_path = self._get_repo_path(channel_id) / relative_path
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_bytes(image_data)
+
+        self.save_conversation(channel_id, messages, model, auto_commit=True)
+
+        if thought_signature:
+            self.save_thought_signature(channel_id, thought_signature)

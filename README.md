@@ -19,6 +19,7 @@ A Discord bot that enables AI conversations using the Gemini API.
 - **Two-level system prompts** - Global master instruction + per-channel customization for flexible AI behavior
 - **Generation config** - Customize temperature, top_p, and other parameters per channel
 - **Export to Markdown** - Export conversation history as Markdown files with images as ZIP
+- **Import from Markdown** - Import conversation history from exported ZIP/MD files
 - **i18n support** - Multi-language support (Japanese/English by default, extensible)
 - **Google Calendar integration** - Manage calendar events through natural language
 - **Google Tasks integration** - Manage TODO lists through natural language
@@ -435,6 +436,7 @@ Available parameters:
 | `/gem history delete <number>` | Delete a specific message by number |
 | `/gem history clear` | Clear all conversation history |
 | `/gem history export [filename]` | Export history as Markdown (ZIP with images) |
+| `/gem history import <file>` | Import history from ZIP or MD file |
 
 ### Branch Management
 
@@ -536,7 +538,22 @@ Conversation history is persisted per channel using Git in the `history/` direct
 - History survives bot restarts
 - Branch/merge support for conversation forking
 - Export to Markdown with `/gem history export`
+- Import from ZIP/MD with `/gem history import`
 - Full Git history with automatic commits
+
+### Export/Import
+
+**Export**: Use `/gem history export [filename]` to download conversation history.
+- Creates a ZIP file containing:
+  - `conversation.md` - Markdown formatted conversation with metadata
+  - `files/` - Image attachments (if any)
+  - `thought_signature.txt` - Thought signature (if exists)
+- Without images, exports as a single `.md` file (with signature) or `.md` file only
+
+**Import**: Use `/gem history import <file>` to restore conversation history.
+- Supports both ZIP and MD files exported from `/gem history export`
+- Restores messages, images, and thought signature
+- **Warning**: Overwrites existing conversation history in the current channel
 
 For more details on Git operations and version control, see [Git Version Control](#git-version-control).
 
