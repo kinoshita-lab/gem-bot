@@ -285,5 +285,11 @@
   "usage_turned_on": "Usage cost display: **ON**",
   "usage_turned_off": "Usage cost display: **OFF**",
   "usage_cost_footer": "\ud83d\udcb0 Tokens: {tokens} | Total: {total} | Cost: ~${cost:.6f}",
-  "usage_cost_unknown_model": "\ud83d\udcb0 Tokens: {tokens} | Total: {total} | Cost: unknown model"
+  "usage_cost_unknown_model": "\ud83d\udcb0 Tokens: {tokens} | Total: {total} | Cost: unknown model",
+
+  "mode_name_default": "Google Search",
+  "mode_name_calendar": "Calendar",
+  "mode_name_todo": "Tasks",
+  "mode_indicator": "Response via \"{mode}\" mode\n\n",
+  "tool_mode_status": "Tool mode display: **{status}**"
 }

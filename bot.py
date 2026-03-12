@@ -1657,12 +1657,12 @@ async def _handle_auto_response(message) -> None:
             if bot.get_tool_mode_show(message.channel.id):
                 tool_mode = bot.get_tool_mode(message.channel.id)
                 tool_mode_names = {
-                    "default": "Google検索",
-                    "calendar": "カレンダー",
-                    "todo": "タスク",
+                    "default": bot.i18n.t("mode_name_default"),
+                    "calendar": bot.i18n.t("mode_name_calendar"),
+                    "todo": bot.i18n.t("mode_name_todo"),
                 }
                 mode_name = tool_mode_names.get(tool_mode, tool_mode)
-                mode_indicator = f'ツールモード "{mode_name}" による回答です\n\n'
+                mode_indicator = bot.i18n.t("mode_indicator", mode=mode_name)
                 display_text = mode_indicator + response_text
             else:
                 display_text = response_text

@@ -285,5 +285,11 @@
   "usage_turned_on": "使用料金表示: **ON**",
   "usage_turned_off": "使用料金表示: **OFF**",
   "usage_cost_footer": "\ud83d\udcb0 Tokens: {tokens} | 合計: {total} | コスト: ~${cost:.6f}",
-  "usage_cost_unknown_model": "\ud83d\udcb0 Tokens: {tokens} | 合計: {total} | コスト: 不明なモデル"
+  "usage_cost_unknown_model": "\ud83d\udcb0 Tokens: {tokens} | 合計: {total} | コスト: 不明なモデル",
+
+  "mode_name_default": "Google検索",
+  "mode_name_calendar": "カレンダー",
+  "mode_name_todo": "タスク",
+  "mode_indicator": "ツールモード「{mode}」による回答です\n\n",
+  "tool_mode_status": "ツールモード表示: **{status}**"
 }

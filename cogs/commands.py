@@ -1030,7 +1030,7 @@ class Commands(commands.Cog):
         self.bot.set_tool_mode_show(channel_id, show)
         status = "ON" if show else "OFF"
         await interaction.response.send_message(
-            f"ツールモード表示: **{status}**"
+            self.t("tool_mode_status", status=status)
         )
 
     # --- Config Group ---
