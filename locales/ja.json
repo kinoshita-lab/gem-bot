@@ -280,5 +280,10 @@
   "history_import_success": "{count}件のメッセージ、{images}枚の画像、署名: {signature}をインポートしました。",
   "history_import_error": "履歴のインポートに失敗しました: {error}",
   "history_import_invalid_format": "無効なファイル形式です。/gem history export でエクスポートした ZIP または MD ファイルをアップロードしてください。",
-  "history_import_no_conversation": "ZIPファイルに conversation.md が見つかりません。"
+  "history_import_no_conversation": "ZIPファイルに conversation.md が見つかりません。",
+
+  "usage_turned_on": "使用料金表示: **ON**",
+  "usage_turned_off": "使用料金表示: **OFF**",
+  "usage_cost_footer": "\ud83d\udcb0 Tokens: {tokens} | 合計: {total} | コスト: ~${cost:.6f}",
+  "usage_cost_unknown_model": "\ud83d\udcb0 Tokens: {tokens} | 合計: {total} | コスト: 不明なモデル"
 }

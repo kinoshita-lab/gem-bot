@@ -312,6 +312,7 @@ class Commands(commands.Cog):
     thought_signature_group = app_commands.Group(name="thought-signature", parent=gem_group, description="Thought signature management")
     thought_group = app_commands.Group(name="thought", parent=gem_group, description="Thought process display settings")
     channel_group = app_commands.Group(name="channel", parent=gem_group, description="Channel management")
+    usage_group = app_commands.Group(name="usage", parent=gem_group, description="Usage cost display settings")
 
 
     # --- Basic Commands ---
@@ -1016,6 +1017,22 @@ class Commands(commands.Cog):
             self.t("mode_changed", mode=selected_mode)
         )
 
+    @mode_group.command(name="show")
+    @app_commands.describe(enabled="Show or hide tool mode indicator")
+    @app_commands.choices(enabled=[
+        app_commands.Choice(name="ON", value="on"),
+        app_commands.Choice(name="OFF", value="off"),
+    ])
+    async def mode_show(self, interaction: discord.Interaction, enabled: app_commands.Choice[str]):
+        """Toggle tool mode indicator display for this channel."""
+        channel_id = interaction.channel_id
+        show = enabled.value == "on"
+        self.bot.set_tool_mode_show(channel_id, show)
+        status = "ON" if show else "OFF"
+        await interaction.response.send_message(
+            f"ツールモード表示: **{status}**"
+        )
+
     # --- Config Group ---
 
     @config_group.command(name="show")
@@ -1350,6 +1367,22 @@ class Commands(commands.Cog):
         
         status = self.t("thought_status_enabled") if current else self.t("thought_status_disabled")
         await interaction.response.send_message(self.t("thought_current_status", status=status))
+
+    # --- Usage Cost Commands ---
+
+    @usage_group.command(name="on")
+    async def usage_on(self, interaction: discord.Interaction):
+        """Enable usage cost display for this channel."""
+        channel_id = interaction.channel_id
+        self.bot.history_manager.save_show_usage(channel_id, True)
+        await interaction.response.send_message(self.t("usage_turned_on"))
+
+    @usage_group.command(name="off")
+    async def usage_off(self, interaction: discord.Interaction):
+        """Disable usage cost display for this channel."""
+        channel_id = interaction.channel_id
+        self.bot.history_manager.save_show_usage(channel_id, False)
+        await interaction.response.send_message(self.t("usage_turned_off"))
 
 
 async def setup(bot: commands.Bot):

@@ -280,5 +280,10 @@
   "history_import_success": "Imported {count} message(s), {images} image(s), signature: {signature}.",
   "history_import_error": "Failed to import history: {error}",
   "history_import_invalid_format": "Invalid file format. Please upload a ZIP or MD file exported from /gem history export.",
-  "history_import_no_conversation": "conversation.md not found in the ZIP file."
+  "history_import_no_conversation": "conversation.md not found in the ZIP file.",
+
+  "usage_turned_on": "Usage cost display: **ON**",
+  "usage_turned_off": "Usage cost display: **OFF**",
+  "usage_cost_footer": "\ud83d\udcb0 Tokens: {tokens} | Total: {total} | Cost: ~${cost:.6f}",
+  "usage_cost_unknown_model": "\ud83d\udcb0 Tokens: {tokens} | Total: {total} | Cost: unknown model"
 }

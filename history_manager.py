@@ -1128,6 +1128,39 @@ class HistoryManager:
         config["channels"][channel_key]["show_thought"] = show
         self._save_global_config(config)
 
+    def load_show_usage(self, channel_id: int) -> bool:
+        """Load whether to show usage cost for a channel.
+
+        Args:
+            channel_id: Discord channel ID.
+
+        Returns:
+            True if usage cost should be shown, False otherwise.
+        """
+        config = self._load_global_config()
+        channels = config.get("channels", {})
+        channel_config = channels.get(str(channel_id), {})
+        return channel_config.get("show_usage", False)
+
+    def save_show_usage(self, channel_id: int, show: bool) -> None:
+        """Save whether to show usage cost for a channel.
+
+        Args:
+            channel_id: Discord channel ID.
+            show: Whether to show usage cost.
+        """
+        config = self._load_global_config()
+
+        if "channels" not in config:
+            config["channels"] = {}
+
+        channel_key = str(channel_id)
+        if channel_key not in config["channels"]:
+            config["channels"][channel_key] = {}
+
+        config["channels"][channel_key]["show_usage"] = show
+        self._save_global_config(config)
+
     def import_conversation(
         self,
         channel_id: int,
