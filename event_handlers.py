@@ -438,12 +438,16 @@ class EventHandlers(commands.Cog):
                     else self.bot.i18n.t("image_default_prompt")
                 )
 
-                response_text = await self.bot.ask_gemini(
+                response_text, usage_text = await self.bot.ask_gemini(
                     message.channel.id,
                     prompt,
                     images=images if images else None,
                     user_id=message.author.id,
                 )
+
+                # Send usage cost at the beginning (only once)
+                if usage_text:
+                    await message.channel.send(usage_text)
 
                 # Prepend current mode indicator to response
                 if self.bot.get_tool_mode_show(message.channel.id):

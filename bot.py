@@ -20,6 +20,44 @@ from latex_renderer import LatexRenderer
 from table_renderer import TableRenderer
 
 
+class CancelButtonView(discord.ui.View):
+    def __init__(self, task: asyncio.Task, user_id: int, i18n: I18nManager, timeout: float = 300):
+        super().__init__(timeout=timeout)
+        self.task = task
+        self.user_id = user_id
+        self.i18n = i18n
+        self.message: discord.Message | None = None
+        self.cancelled = False
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, emoji="⏹️")
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                self.i18n.t("cancel_not_allowed"),
+                ephemeral=True
+            )
+            return
+
+        if not self.task.done():
+            self.task.cancel()
+            self.cancelled = True
+            await interaction.response.send_message(
+                self.i18n.t("api_cancelled"),
+                ephemeral=True
+            )
+            if self.message:
+                try:
+                    await self.message.delete()
+                except discord.NotFound:
+                    pass
+            self.stop()
+        else:
+            await interaction.response.send_message(
+                self.i18n.t("api_already_completed"),
+                ephemeral=True
+            )
+
+
 # Load environment variables
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
@@ -825,7 +863,7 @@ class GeminiBot(commands.Bot):
         prompt: str,
         images: list[tuple[bytes, str]] | None = None,
         user_id: int | None = None,
-    ) -> str:
+    ) -> tuple[str, str | None]:
         """Send a prompt to Gemini and return the response.
 
         Args:
@@ -835,7 +873,7 @@ class GeminiBot(commands.Bot):
             user_id: Discord user ID (for calendar integration).
 
         Returns:
-            Response text from Gemini.
+            Tuple of (response_text, usage_text). usage_text is None if usage display is disabled.
         """
         # Initialize conversation history for this channel if not exists
         if channel_id not in self.conversation_history:
@@ -946,13 +984,13 @@ class GeminiBot(commands.Bot):
                 thought_header = self.i18n.t("thought_process_header")
                 response_text = f"||{thought_header}\n\n{thought_text}||\n\n{response_text}"
 
-            # Append usage cost if enabled
+            # Get usage cost if enabled (returned separately, not appended to response)
             show_usage = self.history_manager.load_show_usage(channel_id)
+            usage_text = None
             if show_usage:
                 usage_text = self._format_usage_cost(response.usage_metadata, model)
-                response_text = response_text + usage_text
 
-            # Add model's response to history
+            # Add model's response to history (without usage text)
             self.conversation_history[channel_id].append(
                 types.Content(
                     role="model", parts=[types.Part.from_text(text=response_text)]
@@ -962,11 +1000,17 @@ class GeminiBot(commands.Bot):
             # Save to disk with Git commit
             self._save_history_to_disk(channel_id)
 
-            return response_text
+            return response_text, usage_text
         except Exception as e:
-            # Remove the last user message from history if an error occurred
-            if self.conversation_history[channel_id]:
-                self.conversation_history[channel_id].pop()
+            if channel_id in self.conversation_history:
+                history = self.conversation_history[channel_id]
+                if history and history[-1].role == "user":
+                    history.pop()
+                if (history and history[-1].role == "user" and
+                        len(history[-1].parts) == 1 and
+                        hasattr(history[-1].parts[0], "thought_signature") and
+                        history[-1].parts[0].thought_signature is not None):
+                    history.pop()
             raise e
 
     # =========================================================================
@@ -1100,7 +1144,7 @@ class GeminiBot(commands.Bot):
         else:
             cost_str = self.i18n.t("usage_cost_unknown_model", tokens=token_str, total=f"{total_tokens:,}")
 
-        return f"\n\n---\n{cost_str}"
+        return f"---\n{cost_str}"
 
     # =========================================================================
     # _process_response Helper Methods
@@ -1624,14 +1668,8 @@ async def _handle_delete_confirmation(message) -> bool:
 
 
 async def _handle_auto_response(message) -> None:
-    """Handle auto-response to messages in enabled channels.
-
-    Args:
-        message: Discord message object.
-    """
     async with message.channel.typing():
         try:
-            # Check for image attachments
             images = []
             supported_types = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
@@ -1643,17 +1681,48 @@ async def _handle_auto_response(message) -> None:
                     except Exception as e:
                         print(f"Failed to download image {attachment.filename}: {e}")
 
-            # Use message content or default prompt if only images
             prompt = message.content if message.content else bot.i18n.t("image_default_prompt")
 
-            response_text = await bot.ask_gemini(
-                message.channel.id,
-                prompt,
-                images=images if images else None,
-                user_id=message.author.id,
+            task = asyncio.create_task(
+                bot.ask_gemini(
+                    message.channel.id,
+                    prompt,
+                    images=images if images else None,
+                    user_id=message.author.id,
+                )
             )
 
-            # Prepend current mode indicator to response
+            cancel_view = CancelButtonView(task, message.author.id, bot.i18n)
+            processing_msg = await message.channel.send(
+                bot.i18n.t("processing"),
+                view=cancel_view
+            )
+            cancel_view.message = processing_msg
+
+            try:
+                response_text, usage_text = await task
+
+                try:
+                    await processing_msg.delete()
+                except discord.NotFound:
+                    pass
+
+            except asyncio.CancelledError:
+                if message.channel.id in bot.conversation_history:
+                    history = bot.conversation_history[message.channel.id]
+                    if history and history[-1].role == "user":
+                        history.pop()
+                    if (history and history[-1].role == "user" and
+                            len(history[-1].parts) == 1 and
+                            hasattr(history[-1].parts[0], "thought_signature") and
+                            history[-1].parts[0].thought_signature is not None):
+                        history.pop()
+                return
+
+            # Send usage cost at the beginning (only once)
+            if usage_text:
+                await message.channel.send(usage_text)
+
             if bot.get_tool_mode_show(message.channel.id):
                 tool_mode = bot.get_tool_mode(message.channel.id)
                 tool_mode_names = {

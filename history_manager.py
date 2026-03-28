@@ -566,7 +566,6 @@ class HistoryManager:
                 if hasattr(part, "text") and part.text:
                     text_parts.append(part.text)
                 elif hasattr(part, "inline_data") and part.inline_data:
-                    # Save image and record path
                     if channel_id is not None:
                         path = self.save_image(
                             channel_id,
@@ -574,6 +573,9 @@ class HistoryManager:
                             part.inline_data.mime_type,
                         )
                         image_paths.append(path)
+
+            if not text_parts and not image_paths:
+                continue
 
             msg: dict[str, Any] = {
                 "role": role,
