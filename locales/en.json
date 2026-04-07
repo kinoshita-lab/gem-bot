@@ -291,6 +291,8 @@
   "api_cancelled": "API call was cancelled",
   "cancel_not_allowed": "Only the message sender can cancel",
   "api_already_completed": "API call already completed",
+  "api_timeout_error": "API request timed out (retried {attempts} times). Please try again later.",
+  "api_server_error": "API server error occurred (retried {attempts} times). Please try again later.",
 
   "mode_name_default": "Google Search",
   "mode_name_calendar": "Calendar",

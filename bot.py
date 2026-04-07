@@ -3,6 +3,7 @@ import io
 import json
 import os
 import re
+from typing import Any
 
 import aiohttp
 import discord
@@ -85,6 +86,12 @@ DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID")
 class GeminiBot(commands.Bot):
     """Custom Bot class with Gemini integration."""
 
+    _RETRYABLE_ERROR_PATTERNS: frozenset[str] = frozenset({
+        "DEADLINE_EXCEEDED", "504", "500", "503", "INTERNAL",
+    })
+    _MAX_API_RETRIES: int = 3
+    _INITIAL_RETRY_DELAY: float = 2.0
+
     class ThoughtSignatureDisabledError(Exception):
         """Exception raised when thought signature is disabled for a model."""
         pass
@@ -95,7 +102,7 @@ class GeminiBot(commands.Bot):
         # Gemini client
         self.gemini_client = genai.Client(
             api_key=GEMINI_API_KEY,
-            http_options=types.HttpOptions(timeout=300000),  # 5 minutes in milliseconds
+            http_options=types.HttpOptions(timeout=480000),
         )
 
         # Enabled channel IDs (parsed from GEMINI_CHANNEL_ID env var)
@@ -857,6 +864,51 @@ class GeminiBot(commands.Bot):
 
         return "\n".join(lines)
 
+    # =========================================================================
+    # Gemini API Retry Helper
+    # =========================================================================
+
+    async def _call_gemini_with_retry(self, **kwargs: Any) -> Any:
+        """Call Gemini generate_content with retry logic for server/timeout errors.
+
+        Args:
+            **kwargs: Arguments passed to generate_content (model, config, contents).
+
+        Returns:
+            Gemini API response.
+
+        Raises:
+            Exception: The last exception if all retries are exhausted.
+        """
+        last_exception: Exception | None = None
+
+        for attempt in range(self._MAX_API_RETRIES + 1):
+            try:
+                return await self.gemini_client.aio.models.generate_content(**kwargs)
+            except Exception as e:
+                error_str = str(e)
+                is_retryable = any(
+                    pattern in error_str for pattern in self._RETRYABLE_ERROR_PATTERNS
+                )
+
+                if is_retryable and attempt < self._MAX_API_RETRIES:
+                    delay = self._INITIAL_RETRY_DELAY * (2 ** attempt)
+                    print(
+                        f"Retryable API error (attempt {attempt + 1}/{self._MAX_API_RETRIES}): {e}"
+                    )
+                    print(f"Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                    last_exception = e
+                else:
+                    raise
+
+        assert last_exception is not None
+        raise last_exception
+
+    # =========================================================================
+    # ask_gemini Main Method
+    # =========================================================================
+
     async def ask_gemini(
         self,
         channel_id: int,
@@ -875,11 +927,9 @@ class GeminiBot(commands.Bot):
         Returns:
             Tuple of (response_text, usage_text). usage_text is None if usage display is disabled.
         """
-        # Initialize conversation history for this channel if not exists
         if channel_id not in self.conversation_history:
             self.conversation_history[channel_id] = []
 
-        # Load and add thought signature to history if exists and model not disabled
         model = self.get_model(channel_id)
         if not self.history_manager.is_model_disabled(model):
             thought_signature = self.history_manager.load_thought_signature(channel_id)
@@ -891,27 +941,23 @@ class GeminiBot(commands.Bot):
                     )
                 )
 
-        # Build and add user message to history
         user_content = self._build_user_content(prompt, images)
         self.conversation_history[channel_id].append(user_content)
 
         try:
-            # Build configuration
             model = self.get_model(channel_id)
             config_params = {
                 "system_instruction": self._build_system_prompt(channel_id),
                 "tools": self._get_tools_for_mode(channel_id),
             }
 
-            # Only enable thinking config for models not disabled
             if not self.history_manager.is_model_disabled(model):
                 config_params["thinking_config"] = types.ThinkingConfig(include_thoughts=True)
 
             config_params.update(self.history_manager.load_generation_config(channel_id))
 
-            # Call Gemini API with retry logic for thought signature errors
             try:
-                response = await self.gemini_client.aio.models.generate_content(
+                response = await self._call_gemini_with_retry(
                     model=model,
                     config=types.GenerateContentConfig(**config_params),
                     contents=self.conversation_history[channel_id],
@@ -925,10 +971,8 @@ class GeminiBot(commands.Bot):
                 )
 
                 if is_thought_signature_error and not self.history_manager.is_model_disabled(model):
-                    # thoughtSignature caused an error - disable it
                     self.history_manager.save_disabled_model(model)
 
-                    # Remove the thought signature entry from history
                     if self.conversation_history[channel_id]:
                         last_entry = self.conversation_history[channel_id][-1]
                         if (last_entry.role == "user" and
@@ -938,66 +982,55 @@ class GeminiBot(commands.Bot):
                             last_entry.parts[0].thought_signature is not None):
                             self.conversation_history[channel_id].pop()
 
-                    # Retry without thinking config
                     config_params["thinking_config"] = types.ThinkingConfig(include_thoughts=False)
                     try:
-                        response = await self.gemini_client.aio.models.generate_content(
+                        response = await self._call_gemini_with_retry(
                             model=model,
                             config=types.GenerateContentConfig(**config_params),
                             contents=self.conversation_history[channel_id],
                         )
                     except Exception:
-                        # If retry also fails, re-raise the original exception
                         raise
                 else:
                     raise
 
-            # Extract and save new thought signature
             new_signature = self._extract_thought_signature(response)
             if new_signature:
                 self.history_manager.save_thought_signature(channel_id, new_signature)
 
-            # Extract thought process text if enabled
             show_thought = self.history_manager.load_show_thought(channel_id)
             thought_text = None
             if show_thought:
                 thought_text = self._extract_thought_text(response)
 
-            # Process response (handle function calls if in calendar or todo mode)
             tool_mode = self.get_tool_mode(channel_id)
             if tool_mode in ("calendar", "todo"):
                 response_text = await self._process_response(
                     response, channel_id, model, config_params, user_id
                 )
             else:
-                # Default mode: extract response text and append grounding sources
                 response_text = response.text or ""
 
-                # Extract and append grounding sources for default (search) mode
                 grounding_sources = await self._extract_grounding_sources(response)
                 if grounding_sources:
                     sources_text = self._format_grounding_sources(grounding_sources)
                     response_text = response_text + sources_text
 
-            # Prepend thought process as spoiler if enabled
             if thought_text:
                 thought_header = self.i18n.t("thought_process_header")
                 response_text = f"||{thought_header}\n\n{thought_text}||\n\n{response_text}"
 
-            # Get usage cost if enabled (returned separately, not appended to response)
             show_usage = self.history_manager.load_show_usage(channel_id)
             usage_text = None
             if show_usage:
                 usage_text = self._format_usage_cost(response.usage_metadata, model)
 
-            # Add model's response to history (without usage text)
             self.conversation_history[channel_id].append(
                 types.Content(
                     role="model", parts=[types.Part.from_text(text=response_text)]
                 )
             )
 
-            # Save to disk with Git commit
             self._save_history_to_disk(channel_id)
 
             return response_text, usage_text
@@ -1355,7 +1388,7 @@ class GeminiBot(commands.Bot):
         )
 
         # Get follow-up response from Gemini
-        final_response = await self.gemini_client.aio.models.generate_content(
+        final_response = await self._call_gemini_with_retry(
             model=model,
             config=types.GenerateContentConfig(**config_params),
             contents=self.conversation_history[channel_id],
@@ -1738,7 +1771,17 @@ async def _handle_auto_response(message) -> None:
 
             await bot.send_response(message.channel, display_text)
         except Exception as e:
-            await message.channel.send(f"An error occurred: {e}")
+            error_str = str(e)
+            if "DEADLINE_EXCEEDED" in error_str or "504" in error_str:
+                await message.channel.send(
+                    bot.i18n.t("api_timeout_error", attempts=bot._MAX_API_RETRIES)
+                )
+            elif any(p in error_str for p in ("500", "503", "INTERNAL")):
+                await message.channel.send(
+                    bot.i18n.t("api_server_error", attempts=bot._MAX_API_RETRIES)
+                )
+            else:
+                await message.channel.send(bot.i18n.t("error_occurred", error=e))
 
 
 @bot.event

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any
 import aiohttp
 from google.genai import types
 
+import asyncio
+
 if TYPE_CHECKING:
     from google import genai
 
@@ -32,6 +34,12 @@ class GeminiClientMixin:
         - self._save_history_to_disk(channel_id) -> None
         - self._format_usage_cost(usage_metadata, model) -> str  (from PricingMixin)
     """
+
+    _RETRYABLE_ERROR_PATTERNS: frozenset[str] = frozenset({
+        "DEADLINE_EXCEEDED", "504", "500", "503", "INTERNAL",
+    })
+    _MAX_API_RETRIES: int = 3
+    _INITIAL_RETRY_DELAY: float = 2.0
 
     # =========================================================================
     # Thought Extraction
@@ -275,6 +283,48 @@ class GeminiClientMixin:
         return "\n".join(lines)
 
     # =========================================================================
+    # Gemini API Retry Helper
+    # =========================================================================
+
+    async def _call_gemini_with_retry(self, **kwargs: Any) -> Any:
+        """Call Gemini generate_content with retry logic for server/timeout errors.
+
+        Args:
+            **kwargs: Arguments passed to generate_content (model, config, contents).
+
+        Returns:
+            Gemini API response.
+
+        Raises:
+            Exception: The last exception if all retries are exhausted.
+        """
+        gemini_client: genai.Client = self.gemini_client  # type: ignore[attr-defined]
+        last_exception: Exception | None = None
+
+        for attempt in range(self._MAX_API_RETRIES + 1):
+            try:
+                return await gemini_client.aio.models.generate_content(**kwargs)
+            except Exception as e:
+                error_str = str(e)
+                is_retryable = any(
+                    pattern in error_str for pattern in self._RETRYABLE_ERROR_PATTERNS
+                )
+
+                if is_retryable and attempt < self._MAX_API_RETRIES:
+                    delay = self._INITIAL_RETRY_DELAY * (2 ** attempt)
+                    print(
+                        f"Retryable API error (attempt {attempt + 1}/{self._MAX_API_RETRIES}): {e}"
+                    )
+                    print(f"Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                    last_exception = e
+                else:
+                    raise
+
+        assert last_exception is not None
+        raise last_exception
+
+    # =========================================================================
     # ask_gemini Main Method
     # =========================================================================
 
@@ -338,7 +388,7 @@ class GeminiClientMixin:
 
             # Call Gemini API with retry logic for thought signature errors
             try:
-                response = await gemini_client.aio.models.generate_content(
+                response = await self._call_gemini_with_retry(
                     model=model,
                     config=types.GenerateContentConfig(**config_params),
                     contents=self.conversation_history[channel_id],  # type: ignore[attr-defined]
@@ -374,7 +424,7 @@ class GeminiClientMixin:
                         include_thoughts=False
                     )
                     try:
-                        response = await gemini_client.aio.models.generate_content(
+                        response = await self._call_gemini_with_retry(
                             model=model,
                             config=types.GenerateContentConfig(**config_params),
                             contents=self.conversation_history[channel_id],  # type: ignore[attr-defined]
@@ -659,7 +709,7 @@ class GeminiClientMixin:
         )
 
         # Get follow-up response from Gemini
-        final_response = await gemini_client.aio.models.generate_content(
+        final_response = await self._call_gemini_with_retry(
             model=model,
             config=types.GenerateContentConfig(**config_params),
             contents=self.conversation_history[channel_id],  # type: ignore[attr-defined]

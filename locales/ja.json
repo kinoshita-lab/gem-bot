@@ -296,5 +296,7 @@
   "processing": "⏳ 処理中...",
   "api_cancelled": "API呼び出しをキャンセルしました",
   "cancel_not_allowed": "キャンセルできるのはメッセージ送信者のみです",
-  "api_already_completed": "API呼び出しは既に完了しています"
+  "api_already_completed": "API呼び出しは既に完了しています",
+  "api_timeout_error": "APIリクエストがタイムアウトしました（{attempts}回リトライ済み）。少し待ってから再度お試しください。",
+  "api_server_error": "APIサーバーエラーが発生しました（{attempts}回リトライ済み）。少し待ってから再度お試しください。"
 }

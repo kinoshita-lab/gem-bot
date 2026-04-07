@@ -467,7 +467,23 @@ class EventHandlers(commands.Cog):
 
                 await self.bot.send_response(message.channel, display_text)
             except Exception as e:
-                await message.channel.send(f"An error occurred: {e}")
+                error_str = str(e)
+                if "DEADLINE_EXCEEDED" in error_str or "504" in error_str:
+                    await message.channel.send(
+                        self.bot.i18n.t(
+                            "api_timeout_error", attempts=self.bot._MAX_API_RETRIES
+                        )
+                    )
+                elif any(p in error_str for p in ("500", "503", "INTERNAL")):
+                    await message.channel.send(
+                        self.bot.i18n.t(
+                            "api_server_error", attempts=self.bot._MAX_API_RETRIES
+                        )
+                    )
+                else:
+                    await message.channel.send(
+                        self.bot.i18n.t("error_occurred", error=e)
+                    )
 
 
 async def setup(bot: commands.Bot) -> None:
